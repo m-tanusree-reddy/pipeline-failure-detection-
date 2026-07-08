@@ -31,3 +31,17 @@
 - Verified Vite React application compiles and builds successfully via `npm run build` without any errors.
 - Staged all frontend files, committed, and pushed to the remote `main` branch successfully.
 
+## Pre-Day 2 Architecture Improvements
+- Created and checked out a new feature branch `feature/day-2-github-api` to keep `main` clean.
+- Reorganized the `backend/` directory into a modular structure:
+  - `agents/`: AI reasoning and planning logic.
+  - `services/`: External integrations (GitHub API, parser, etc.).
+  - `tools/`: Individual search and history tools.
+  - `models/`: Data models.
+  - `utils/`: Common helper functions.
+  - `logs/`: Directory for saving downloaded logs.
+- Created `backend/config.py` to manage environment configurations.
+- Created `backend/app.py` as the application entry point and successfully verified it runs.
+- Committed the restructured folder layout to the `feature/day-2-github-api` branch and pushed to the remote.
+
+
