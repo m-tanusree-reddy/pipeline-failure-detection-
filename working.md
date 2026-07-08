@@ -13,6 +13,11 @@
 ### 3. Documentation
 - Created a comprehensive `README.md` detailing the multi-phase roadmap, architecture diagram, project structure, and local run instructions.
 
-### 4. Git Initialization
+### 4. Git Initialization & Remote Sync
 - Initialized local Git repository using `git init`.
-- Remote repository link: `https://github.com/m-tanusree-reddy/pipeline-failure-detection-.git`
+- Configured local Git user name to `M Tanusree Reddy` and email to `m.tanusreereddy@gmail.com`.
+- Staged and committed initial project structure: `.gitignore`, `requirements.txt`, `README.md`, and `working.md`.
+- Renamed the default branch to `main`.
+- Added remote origin `https://github.com/m-tanusree-reddy/pipeline-failure-detection-.git`.
+- Pulled remote changes with `git pull origin main --rebase` to merge the remote `LICENSE` file cleanly.
+- Pushed local commits to the remote `main` branch successfully.
