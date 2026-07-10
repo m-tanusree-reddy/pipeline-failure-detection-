@@ -183,3 +183,34 @@ The Ingestion, Parsing, Classification, and now the **Planning** layers are full
     4. PyPI (Priority: 4) - Confirm correct package name and version compatibility.
   ```
 - All 9 unit tests still pass after the refactor.
+
+### 10. Investigation Tools Layer
+Built the full `backend/tools/` package with 4 tools and an orchestrator:
+
+| File | Class | Purpose |
+|------|-------|---------|
+| `base_tool.py` | `BaseTool` | Abstract interface all tools implement (`run(context) → evidence dict`) |
+| `configuration_inspector.py` | `ConfigurationInspector` | Scans requirements.txt, pyproject.toml, etc. to check if failing package is declared |
+| `git_history.py` | `GitHistory` | Runs `git log` on watched paths (requirements, Dockerfile, workflows) to surface relevant commits |
+| `workflow_history.py` | `WorkflowHistory` | Reads local CI logs for error matches; scans .github/workflows YAML for install steps |
+| `pypi_tool.py` | `PyPI` | Queries PyPI JSON API to verify package existence, version, and detect underscore/hyphen typos |
+| `tool_runner.py` | `ToolRunner` | Reads PlannerOutput, sorts tools by priority, executes each, collects evidence |
+| `__init__.py` | — | Package exports for clean imports |
+
+- Added `backend/tests/test_tools.py` with **14 new tests** (all 23 total pass cleanly, zero ResourceWarnings).
+- Created `backend/test_e2e_pipeline.py` end-to-end integration script wiring Planner → ToolRunner → Evidence.
+
+### 11. LLM Service — Dynamic Model Discovery (Major Refactor)
+- **Problem**: Hardcoded model names in fallback chain broke silently when models were deprecated, quota-exhausted, or unavailable.
+- **Solution**: Rewrote `backend/services/llm_service.py` with:
+  - `_discover_models()` calls `client.models.list()` at startup to auto-detect all compatible text-generation Gemini models.
+  - Filters out non-text models (embedding, imagen, veo, tts, audio, live, robotics, etc.).
+  - Ranks discovered models Flash-first, then Pro — fully automatic, no hardcoded names.
+  - Smart error handling per model:
+    - `503 UNAVAILABLE` → retry up to 2× with 5s→10s backoff, then skip to next model.
+    - `429 RESOURCE_EXHAUSTED` → skip immediately.
+    - `400/401/403/404` → skip immediately (fatal, no retry).
+    - Other → skip immediately.
+  - Full emoji logging showing selected model, overload, quota, and success at each step.
+- **Verified live**: Automatically traversed `gemini-flash-latest` (503) → `gemini-2.5-flash` (404 skip) → `gemini-2.0-flash` variants (429 skip) → working model → **confidence 0.95 output**.
+- All 23 unit tests pass. `test_planner_live.py` works without any manual `.env` changes.
