@@ -31,3 +31,39 @@
 - Verified Vite React application compiles and builds successfully via `npm run build` without any errors.
 - Staged all frontend files, committed, and pushed to the remote `main` branch successfully.
 
+## Pre-Day 2 Architecture Improvements
+- Created and checked out a new feature branch `feature/day-2-github-api` to keep `main` clean.
+- Reorganized the `backend/` directory into a modular structure:
+  - `agents/`: AI reasoning and planning logic.
+  - `services/`: External integrations (GitHub API, parser, etc.).
+  - `tools/`: Individual search and history tools.
+  - `models/`: Data models.
+  - `utils/`: Common helper functions.
+  - `logs/`: Directory for saving downloaded logs.
+- Created `backend/config.py` to manage environment configurations.
+- Created `backend/app.py` as the application entry point and successfully verified it runs.
+- Committed the restructured folder layout to the `feature/day-2-github-api` branch and pushed to the remote.
+
+
+## Day 2 Ingestion Layer Integration
+
+### 1. Dependency Integration
+- Installed `python-dotenv` and `pydantic`.
+- Generated an updated, UTF-8 encoded `requirements.txt` containing all current dependency specifications.
+
+### 2. Environment Configuration
+- Created `backend/.env` containing a placeholder `GITHUB_TOKEN`.
+- Updated `backend/config.py` using `load_dotenv` to expose variables (`GITHUB_TOKEN`, `GITHUB_API_URL`, `TIMEOUT`) to other modules.
+
+### 3. Pydantic Models for Response Verification
+- Created `backend/models/github.py` with `WorkflowRun` and `WorkflowRunsResponse` Pydantic models.
+
+### 4. GitHub API Ingestion Client
+- Implemented `GitHubAPI` client in `backend/services/github_api.py` with a persistent `requests.Session`.
+- Structured `list_runs` to support filtering by status, allowing `latest_failed_run` to specifically fetch the latest failed workflow run from the API directly.
+- Implemented streaming log download saving run logs to `backend/logs/run_<run_id>.zip`.
+- Added authentication validation checking for placeholder tokens, falling back to unauthenticated requests to allow public repository listing without immediately needing credentials.
+
+### 5. Orchestration & Integration Test
+- Updated `backend/app.py` to orchestrate workflow run querying and failed logs download for `microsoft/vscode`.
+- Handled potential API-level log download restriction (403 Forbidden when unauthenticated) gracefully by pointing the user to configure `.env`.
