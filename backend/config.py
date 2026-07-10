@@ -1,8 +1,14 @@
+from dotenv import load_dotenv
 import os
+
+# Load environment variables from .env relative to this file
+dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+load_dotenv(dotenv_path)
 
 # GitHub API Configuration
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
-GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY", "")  # e.g., "owner/repo"
+GITHUB_API_URL = os.getenv("GITHUB_API_URL", "https://api.github.com")
+TIMEOUT = int(os.getenv("TIMEOUT", "30"))
 
 # Application Settings
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
