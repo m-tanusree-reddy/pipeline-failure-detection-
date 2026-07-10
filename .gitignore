@@ -47,3 +47,4 @@ Desktop.ini
 # Logs
 backend/logs/
 *.zip
+!backend/sample_logs/*.zip
