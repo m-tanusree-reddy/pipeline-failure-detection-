@@ -1,0 +1,8 @@
+2026-07-09T10:21:00.6020000Z Evaluating pr_quality.if
+2026-07-09T10:21:00.6020000Z Evaluating: success()
+2026-07-09T10:21:00.6020000Z Result: true
+2026-07-09T10:21:00.6240000Z Job is about to start running on the hosted runner: GitHub Actions 1000090990
+2026-07-09T10:21:00.6240000Z Job is waiting for a hosted runner to come online.
+2026-07-09T10:21:00.6040000Z Requested labels: ubuntu-latest
+2026-07-09T10:21:00.6040000Z Job defined at: django/django/.github/workflows/check_pr_quality.yml@refs/heads/main
+2026-07-09T10:21:00.6040000Z Waiting for a runner to pick up this job...

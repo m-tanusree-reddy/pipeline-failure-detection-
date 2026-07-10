@@ -1,0 +1,235 @@
+﻿2026-07-09T10:21:04.1296950Z Current runner version: '2.335.1'
+2026-07-09T10:21:04.1322325Z ##[group]Runner Image Provisioner
+2026-07-09T10:21:04.1323719Z Hosted Compute Agent
+2026-07-09T10:21:04.1324334Z Version: 20260624.560
+2026-07-09T10:21:04.1325101Z Commit: 925d229a51159bc391ae97e54a2dd1fe20af789d
+2026-07-09T10:21:04.1325854Z Build Date: 2026-06-24T18:26:47Z
+2026-07-09T10:21:04.1326548Z Worker ID: {be5e6eb6-4732-4727-9d14-71bfd11b9c51}
+2026-07-09T10:21:04.1327358Z Azure Region: westus3
+2026-07-09T10:21:04.1327960Z ##[endgroup]
+2026-07-09T10:21:04.1329577Z ##[group]Operating System
+2026-07-09T10:21:04.1330265Z Ubuntu
+2026-07-09T10:21:04.1330803Z 24.04.4
+2026-07-09T10:21:04.1331380Z LTS
+2026-07-09T10:21:04.1331912Z ##[endgroup]
+2026-07-09T10:21:04.1332491Z ##[group]Runner Image
+2026-07-09T10:21:04.1333418Z Image: ubuntu-24.04
+2026-07-09T10:21:04.1334029Z Version: 20260628.225.1
+2026-07-09T10:21:04.1335352Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260628.225/images/ubuntu/Ubuntu2404-Readme.md
+2026-07-09T10:21:04.1336925Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260628.225
+2026-07-09T10:21:04.1337964Z ##[endgroup]
+2026-07-09T10:21:04.1339164Z ##[group]GITHUB_TOKEN Permissions
+2026-07-09T10:21:04.1341391Z Contents: read
+2026-07-09T10:21:04.1342023Z Metadata: read
+2026-07-09T10:21:04.1342769Z PullRequests: write
+2026-07-09T10:21:04.1343695Z ##[endgroup]
+2026-07-09T10:21:04.1345847Z Secret source: Actions
+2026-07-09T10:21:04.1346708Z Prepare workflow directory
+2026-07-09T10:21:04.1741362Z Prepare all required actions
+2026-07-09T10:21:04.1780580Z Getting action download info
+2026-07-09T10:21:04.5285544Z Download action repository 'actions/checkout@v6' (SHA:df4cb1c069e1874edd31b4311f1884172cec0e10)
+2026-07-09T10:21:04.6460213Z Download action repository 'actions/setup-python@v6' (SHA:ece7cb06caefa5fff74198d8649806c4678c61a1)
+2026-07-09T10:21:05.6384252Z Complete job name: Run Quality Checks on a PR
+2026-07-09T10:21:05.7165711Z ##[group]Run actions/checkout@v6
+2026-07-09T10:21:05.7166723Z with:
+2026-07-09T10:21:05.7167225Z   persist-credentials: false
+2026-07-09T10:21:05.7167785Z   ref: main
+2026-07-09T10:21:05.7168257Z   repository: django/django
+2026-07-09T10:21:05.7172320Z   token: ***
+2026-07-09T10:21:05.7172817Z   ssh-strict: true
+2026-07-09T10:21:05.7173564Z   ssh-user: git
+2026-07-09T10:21:05.7174038Z   clean: true
+2026-07-09T10:21:05.7174535Z   sparse-checkout-cone-mode: true
+2026-07-09T10:21:05.7175130Z   fetch-depth: 1
+2026-07-09T10:21:05.7175606Z   fetch-tags: false
+2026-07-09T10:21:05.7176116Z   show-progress: true
+2026-07-09T10:21:05.7176632Z   lfs: false
+2026-07-09T10:21:05.7177101Z   submodules: false
+2026-07-09T10:21:05.7177615Z   set-safe-directory: true
+2026-07-09T10:21:05.7178443Z ##[endgroup]
+2026-07-09T10:21:05.8198087Z Syncing repository: django/django
+2026-07-09T10:21:05.8199961Z ##[group]Getting Git version info
+2026-07-09T10:21:05.8200867Z Working directory is '/home/runner/work/django/django'
+2026-07-09T10:21:05.8201962Z [command]/usr/bin/git version
+2026-07-09T10:21:05.8251666Z git version 2.54.0
+2026-07-09T10:21:05.8276427Z ##[endgroup]
+2026-07-09T10:21:05.8291180Z Temporarily overriding HOME='/home/runner/work/_temp/8e12f5ff-dd27-488e-b0ff-308c7247ec68' before making global git config changes
+2026-07-09T10:21:05.8292760Z Adding repository directory to the temporary git global config as a safe directory
+2026-07-09T10:21:05.8297065Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/django/django
+2026-07-09T10:21:05.8350914Z Deleting the contents of '/home/runner/work/django/django'
+2026-07-09T10:21:05.8355907Z ##[group]Determining repository object format
+2026-07-09T10:21:06.1392326Z ##[endgroup]
+2026-07-09T10:21:06.1394681Z ##[group]Initializing the repository
+2026-07-09T10:21:06.1396722Z [command]/usr/bin/git init /home/runner/work/django/django
+2026-07-09T10:21:06.1514196Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-07-09T10:21:06.1516182Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-07-09T10:21:06.1518255Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-07-09T10:21:06.1519757Z hint: call:
+2026-07-09T10:21:06.1520463Z hint:
+2026-07-09T10:21:06.1521425Z hint: 	git config --global init.defaultBranch <name>
+2026-07-09T10:21:06.1522571Z hint:
+2026-07-09T10:21:06.1524038Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-07-09T10:21:06.1525911Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-07-09T10:21:06.1527363Z hint:
+2026-07-09T10:21:06.1528147Z hint: 	git branch -m <name>
+2026-07-09T10:21:06.1529045Z hint:
+2026-07-09T10:21:06.1530244Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-07-09T10:21:06.1539103Z Initialized empty Git repository in /home/runner/work/django/django/.git/
+2026-07-09T10:21:06.1554407Z [command]/usr/bin/git remote add origin https://github.com/django/django
+2026-07-09T10:21:06.1605736Z ##[endgroup]
+2026-07-09T10:21:06.1608663Z ##[group]Disabling automatic garbage collection
+2026-07-09T10:21:06.1611275Z [command]/usr/bin/git config --local gc.auto 0
+2026-07-09T10:21:06.1645850Z ##[endgroup]
+2026-07-09T10:21:06.1648328Z ##[group]Setting up auth
+2026-07-09T10:21:06.1649809Z Removing SSH command configuration
+2026-07-09T10:21:06.1654247Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-07-09T10:21:06.1698147Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-07-09T10:21:06.2079559Z Removing HTTP extra header
+2026-07-09T10:21:06.2087756Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-07-09T10:21:06.2127634Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-07-09T10:21:06.2367449Z Removing includeIf entries pointing to credentials config files
+2026-07-09T10:21:06.2373745Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-07-09T10:21:06.2409561Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-07-09T10:21:06.2635672Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-0ca633be-0372-42c2-a400-273b144e6706.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-07-09T10:21:06.2680950Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/django/django/.git.path /home/runner/work/_temp/git-credentials-0ca633be-0372-42c2-a400-273b144e6706.config
+2026-07-09T10:21:06.2713369Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/django/django/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-0ca633be-0372-42c2-a400-273b144e6706.config
+2026-07-09T10:21:06.2753447Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-0ca633be-0372-42c2-a400-273b144e6706.config
+2026-07-09T10:21:06.2786080Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-0ca633be-0372-42c2-a400-273b144e6706.config
+2026-07-09T10:21:06.2814733Z ##[endgroup]
+2026-07-09T10:21:06.2816474Z ##[group]Fetching the repository
+2026-07-09T10:21:06.2823582Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +refs/heads/main*:refs/remotes/origin/main* +refs/tags/main*:refs/tags/main*
+2026-07-09T10:21:08.9814320Z From https://github.com/django/django
+2026-07-09T10:21:08.9816094Z  * [new branch]      main       -> origin/main
+2026-07-09T10:21:08.9850984Z ##[endgroup]
+2026-07-09T10:21:08.9851740Z ##[group]Determining the checkout info
+2026-07-09T10:21:08.9857721Z [command]/usr/bin/git branch --list --remote origin/main
+2026-07-09T10:21:08.9920357Z   origin/main
+2026-07-09T10:21:08.9925052Z ##[endgroup]
+2026-07-09T10:21:08.9929790Z [command]/usr/bin/git sparse-checkout disable
+2026-07-09T10:21:08.9978260Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-07-09T10:21:09.0009361Z ##[group]Checking out the ref
+2026-07-09T10:21:09.0012980Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-07-09T10:21:09.5327556Z Switched to a new branch 'main'
+2026-07-09T10:21:09.5334976Z branch 'main' set up to track 'origin/main'.
+2026-07-09T10:21:09.5347448Z ##[endgroup]
+2026-07-09T10:21:09.5405426Z [command]/usr/bin/git log -1 --format=%H
+2026-07-09T10:21:09.5425468Z b34b834378adc590a771cccd44b9fb0b953cdca2
+2026-07-09T10:21:09.5435622Z ##[group]Removing auth
+2026-07-09T10:21:09.5436667Z Removing SSH command configuration
+2026-07-09T10:21:09.5440421Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-07-09T10:21:09.5479347Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-07-09T10:21:09.5732597Z Removing HTTP extra header
+2026-07-09T10:21:09.5739326Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-07-09T10:21:09.5778274Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-07-09T10:21:09.6028183Z Removing includeIf entries pointing to credentials config files
+2026-07-09T10:21:09.6031897Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-07-09T10:21:09.6062587Z includeif.gitdir:/home/runner/work/django/django/.git.path
+2026-07-09T10:21:09.6063674Z includeif.gitdir:/home/runner/work/django/django/.git/worktrees/*.path
+2026-07-09T10:21:09.6064376Z includeif.gitdir:/github/workspace/.git.path
+2026-07-09T10:21:09.6065634Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-07-09T10:21:09.6086565Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/django/django/.git.path
+2026-07-09T10:21:09.6104817Z /home/runner/work/_temp/git-credentials-0ca633be-0372-42c2-a400-273b144e6706.config
+2026-07-09T10:21:09.6116452Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/django/django/.git.path /home/runner/work/_temp/git-credentials-0ca633be-0372-42c2-a400-273b144e6706.config
+2026-07-09T10:21:09.6157342Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/django/django/.git/worktrees/*.path
+2026-07-09T10:21:09.6192549Z /home/runner/work/_temp/git-credentials-0ca633be-0372-42c2-a400-273b144e6706.config
+2026-07-09T10:21:09.6202335Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/django/django/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-0ca633be-0372-42c2-a400-273b144e6706.config
+2026-07-09T10:21:09.6244831Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-07-09T10:21:09.6280617Z /github/runner_temp/git-credentials-0ca633be-0372-42c2-a400-273b144e6706.config
+2026-07-09T10:21:09.6290979Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-0ca633be-0372-42c2-a400-273b144e6706.config
+2026-07-09T10:21:09.6334144Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-07-09T10:21:09.6367269Z /github/runner_temp/git-credentials-0ca633be-0372-42c2-a400-273b144e6706.config
+2026-07-09T10:21:09.6377247Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-0ca633be-0372-42c2-a400-273b144e6706.config
+2026-07-09T10:21:09.6416080Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-07-09T10:21:09.6655130Z Removing credentials config '/home/runner/work/_temp/git-credentials-0ca633be-0372-42c2-a400-273b144e6706.config'
+2026-07-09T10:21:09.6664377Z ##[endgroup]
+2026-07-09T10:21:09.6985862Z ##[group]Run actions/setup-python@v6
+2026-07-09T10:21:09.6986213Z with:
+2026-07-09T10:21:09.6986433Z   python-version: 3.14
+2026-07-09T10:21:09.6986669Z   check-latest: false
+2026-07-09T10:21:09.6989259Z   token: ***
+2026-07-09T10:21:09.6989493Z   update-environment: true
+2026-07-09T10:21:09.6989744Z   allow-prereleases: false
+2026-07-09T10:21:09.6989979Z   freethreaded: false
+2026-07-09T10:21:09.6990207Z ##[endgroup]
+2026-07-09T10:21:09.8301050Z ##[group]Installed versions
+2026-07-09T10:21:09.8711557Z Successfully set up CPython (3.14.6)
+2026-07-09T10:21:09.8712368Z ##[endgroup]
+2026-07-09T10:21:09.8852740Z ##[group]Run python scripts/pr_quality/check_pr.py
+2026-07-09T10:21:09.8853555Z [36;1mpython scripts/pr_quality/check_pr.py[0m
+2026-07-09T10:21:09.9099926Z shell: /usr/bin/bash -e {0}
+2026-07-09T10:21:09.9100201Z env:
+2026-07-09T10:21:09.9100480Z   pythonLocation: /opt/hostedtoolcache/Python/3.14.6/x64
+2026-07-09T10:21:09.9100929Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.14.6/x64/lib/pkgconfig
+2026-07-09T10:21:09.9101352Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.14.6/x64
+2026-07-09T10:21:09.9101726Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.14.6/x64
+2026-07-09T10:21:09.9102110Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.14.6/x64
+2026-07-09T10:21:09.9102488Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.14.6/x64/lib
+2026-07-09T10:21:09.9105419Z   GITHUB_TOKEN: ***
+2026-07-09T10:21:09.9105663Z   PR_AUTHOR: TheManishCode
+2026-07-09T10:21:09.9113889Z   PR_BODY: #### Trac ticket number
+
+ticket-23054
+
+#### Branch description
+
+The per-site cache documentation doesn't mention that pages are cached per
+combination of the request headers named in the response's ``Vary`` header,
+and that common Django features (sessions, CSRF tokens) add ``Vary: Cookie``.
+On sites where most pages touch the session or render forms, the per-site
+cache effectively becomes a per-visitor cache, with a much lower hit ratio
+and larger size than expected — the limitation reported in the ticket.
+
+This adds a warning to the per-site cache section explaining when
+``Vary: Cookie`` is added, its consequences (per-visitor caching; responses
+that set cookies while varying on ``Cookie`` are never cached), and points to
+the per-view cache and template fragment caching as alternatives. A ref label
+was added to the template fragment caching section for cross-referencing.
+
+The behavior described was verified against
+``django/middleware/cache.py``, ``django/middleware/csrf.py``, and
+``django/contrib/sessions/middleware.py``. Docs build cleanly with Sphinx and
+pass ``sphinx-lint``.
+
+#### AI Assistance Disclosure (REQUIRED)
+- [x] **If AI tools were used**, I have disclosed which ones, and fully reviewed and verified their output.
+
+AI tools used: Claude Code (Anthropic). The patch was verified by checking the
+documented behavior against the middleware source and by building the docs.
+
+#### Checklist
+- [x] This PR follows the [contribution guidelines](https://docs.djangoproject.com/en/stable/internals/contributing/writing-code/submitting-patches/).
+- [x] This PR **does not** disclose a security vulnerability (see [vulnerability reporting](https://docs.djangoproject.com/en/stable/internals/security/)).
+- [x] This PR targets the `main` branch.
+- [x] The commit message is written in past tense, mentions the ticket number, and ends with a period (see [guidelines](https://docs.djangoproject.com/en/dev/internals/contributing/committing-code/#committing-guidelines)).
+- [x] I have not requested, and will not request, an automated AI review for this PR.
+- [ ] I have checked the "Has patch" ticket flag in the Trac system.
+- [ ] I have added or updated relevant tests. (N/A — documentation-only change.)
+- [x] I have added or updated relevant docs, including release notes if applicable.
+- [ ] I have attached screenshots in both light and dark modes for any UI changes. (N/A)
+2026-07-09T10:21:09.9122415Z   PR_TITLE: Fixed #23054 -- Documented per-site cache limitations with Vary: Cookie responses.
+2026-07-09T10:21:09.9122865Z   PR_CREATED_AT: 2026-07-09T10:20:55Z
+2026-07-09T10:21:09.9123246Z   PR_NUMBER: 21607
+2026-07-09T10:21:09.9123457Z   PR_REPO: django/django
+2026-07-09T10:21:09.9123680Z   AUTOCLOSE: true
+2026-07-09T10:21:09.9123883Z   PYTHONPATH: scripts
+2026-07-09T10:21:09.9124094Z ##[endgroup]
+2026-07-09T10:21:11.0941088Z ##[notice]PR #21607 author has no commits -- setting size threshold to 0.
+2026-07-09T10:21:11.9139440Z ##[notice]Trac ticket is not Accepted -- skipping has_patch check.
+2026-07-09T10:21:12.9174648Z ##[error]PR #21607 failed 1 check(s), adding comment with details. Closing the PR given lack of recent contributions.
+2026-07-09T10:21:13.9945505Z ##[error]Process completed with exit code 1.
+2026-07-09T10:21:14.0083609Z Post job cleanup.
+2026-07-09T10:21:14.0935381Z [command]/usr/bin/git version
+2026-07-09T10:21:14.0972410Z git version 2.54.0
+2026-07-09T10:21:14.1014857Z Temporarily overriding HOME='/home/runner/work/_temp/5d3532c9-b4c2-4715-8366-f01849b0ba54' before making global git config changes
+2026-07-09T10:21:14.1015794Z Adding repository directory to the temporary git global config as a safe directory
+2026-07-09T10:21:14.1020309Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/django/django
+2026-07-09T10:21:14.1049588Z Removing SSH command configuration
+2026-07-09T10:21:14.1056496Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-07-09T10:21:14.1088709Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-07-09T10:21:14.1330667Z Removing HTTP extra header
+2026-07-09T10:21:14.1336223Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-07-09T10:21:14.1371368Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-07-09T10:21:14.1602736Z Removing includeIf entries pointing to credentials config files
+2026-07-09T10:21:14.1609865Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-07-09T10:21:14.1642095Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-07-09T10:21:14.2018624Z Cleaning up orphan processes
