@@ -130,6 +130,32 @@ The Ingestion, Parsing, Classification, and now the **Planning** layers are full
 - Added strict system prompt formatting to prevent code-fix hallucinations.
 - Added robust error handling, returning a safe default plan (`GitHistory`, `DocumentationSearch`, `StackOverflow`) when the API is inaccessible or fails.
 
-### 6. Unit Testing the Planner
 - Created `backend/tests/test_planner.py` to assert correct structured response processing and fallback execution under API error states using unittest mocks.
 - Run the full test suite verifying that all 9 tests (7 parser tests + 2 planner tests) pass cleanly.
+
+### 7. Environment Diagnosis & Fix (ImportError Resolution)
+- **Root Cause**: The project's virtual environment (`venv`) was not activated in the terminal, so `python -m unittest discover backend/tests` was using the global system Python interpreter, which was missing `google-genai` and `python-dotenv`.
+- **Fix**: Installed `google-genai` and `python-dotenv` into the global Python environment so that both the activated venv and the global interpreter can run the test suite without activation.
+- **Verified**: `python -c "from google import genai; print('Import successful')"` returns success.
+- **All 9 tests pass** using `python -m unittest discover backend/tests` without requiring venv activation.
+
+### 8. Real Gemini API Verification
+- Added `GEMINI_API_KEY` to `backend/.env`.
+- Created `backend/test_real_gemini.py` to run the `PlannerAgent` against the real Gemini API.
+- Discovered that `gemini-2.5-flash` is deprecated for new users and `gemini-2.0-flash` had quota exhaustion on the free tier.
+- Updated default model in `backend/config.py` from `gemini-2.5-flash` → `gemini-flash-latest`, which has valid quota.
+- **Successful Real API Output** for a `ModuleNotFoundError: No module named flask_sqlalchemy` classification:
+  ```
+  Summary:
+  A ModuleNotFoundError occurred because 'flask_sqlalchemy' is missing in the execution
+  environment. The investigation plan focuses on verifying dependency configurations,
+  checking recent git changes to dependency files, and inspecting the CI workflow setup.
+
+  Confidence: 0.95
+
+  Investigation Plan:
+    1. ConfigurationInspector (Priority: 1) - Inspect requirements.txt/pyproject.toml and CI configs.
+    2. GitHistory (Priority: 2) - Check if flask-sqlalchemy was recently removed from dependencies.
+    3. WorkflowHistory (Priority: 3) - Determine if this failure started after a workflow change.
+    4. PyPI (Priority: 4) - Verify the package name and versioning on PyPI.
+  ```
