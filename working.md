@@ -159,3 +159,27 @@ The Ingestion, Parsing, Classification, and now the **Planning** layers are full
     3. WorkflowHistory (Priority: 3) - Determine if this failure started after a workflow change.
     4. PyPI (Priority: 4) - Verify the package name and versioning on PyPI.
   ```
+
+### 9. LLM Service Resilience — Model Fallback Chain
+- **Problem**: `gemini-flash-latest` and `gemini-3.1-flash-lite` return `503 UNAVAILABLE` under high demand when using structured JSON output (`response_schema`), even though plain text requests succeed.
+- **Root Cause**: Structured output (JSON schema enforcement) routes to a higher-load endpoint on Gemini's free tier.
+- **Fix**: Rewrote `backend/services/llm_service.py` to:
+  - Define a `MODEL_FALLBACK_CHAIN` list: `gemini-3.1-flash-lite` → `gemini-flash-latest` → `gemini-3-flash-preview`.
+  - On `503 UNAVAILABLE`: retry once with 5s backoff, then **skip to the next model** automatically.
+  - On `429 RESOURCE_EXHAUSTED`: skip that model immediately (no retry).
+  - On any other error (4xx, parse): propagate immediately.
+- **Result**: Planner Agent successfully fell back from `gemini-flash-latest` (503) → `gemini-3-flash-preview` and returned a real structured plan:
+  ```
+  Summary: The application is failing due to a missing 'flask_sqlalchemy' dependency
+  in the runtime environment. Investigation will focus on verifying dependency
+  definitions and recent changes to the environment configuration.
+
+  Confidence: 0.95
+
+  Investigation Plan:
+    1. ConfigurationInspector (Priority: 1) - Verify flask-sqlalchemy in requirements.txt/pyproject.toml.
+    2. WorkflowHistory (Priority: 2) - Check recent CI logs for failed/skipped install steps.
+    3. GitHistory (Priority: 3) - Find commits that modified dependency files or build config.
+    4. PyPI (Priority: 4) - Confirm correct package name and version compatibility.
+  ```
+- All 9 unit tests still pass after the refactor.
