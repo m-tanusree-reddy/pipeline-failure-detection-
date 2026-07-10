@@ -104,4 +104,32 @@
 - Pushed branch `feature/log-parser` to origin successfully.
 
 ### Current Project State
-The **Ingestion Layer** (GitHub API logs) and the **Parsing/Classification Layer** (Log Parser + Rule-Based Classifier) are now fully implemented and functioning. The system can successfully download a raw `.txt` workflow log, heavily filter out the OS/Git noise, pinpoint the exact traceback, assign a standardized category/severity, and format a clean JSON payload that is primed for the next AI agent reasoning step.
+The Ingestion, Parsing, Classification, and now the **Planning** layers are fully implemented. The system can retrieve log files, parse them to pinpoint exceptions, classify their severity/category, and use an LLM-powered planning agent to output a clean, validated investigation strategy for debug tooling execution.
+
+## Day 4 AI Planner Agent Implementation
+
+### 1. Dependency Integration
+- Installed Google Gemini API SDK `google-genai` inside our virtual environment.
+- Updated `requirements.txt` with all package references properly encoded in UTF-8.
+
+### 2. Configuration Setup
+- Added `GEMINI_API_KEY` and `GEMINI_MODEL` (defaulting to `gemini-2.5-flash`) configuration values to `backend/config.py`.
+
+### 3. Pydantic Models for Structured Output
+- Created `backend/models/planner_models.py` defining Pydantic schemas for LLM validation:
+  - `InvestigationStep`: containing `tool` (restricted to supported tools via `Literal`), `priority` (integer), and `reason` (string).
+  - `PlannerOutput`: containing `summary` (string), `investigation_plan` (list of `InvestigationStep`), and `confidence` (float).
+
+### 4. Reusable LLM Service
+- Created `backend/services/llm_service.py` exposing `LLMService`.
+- Configured client connection using `google.genai.Client`.
+- Implemented structured output validation using `GenerateContentConfig(response_schema=response_model)` to guarantee response compliance and handle API timeouts/retries gracefully.
+
+### 5. AI Planner Agent
+- Implemented `PlannerAgent` inside `backend/agents/planner.py` accepting the `LLMService` via dependency injection.
+- Added strict system prompt formatting to prevent code-fix hallucinations.
+- Added robust error handling, returning a safe default plan (`GitHistory`, `DocumentationSearch`, `StackOverflow`) when the API is inaccessible or fails.
+
+### 6. Unit Testing the Planner
+- Created `backend/tests/test_planner.py` to assert correct structured response processing and fallback execution under API error states using unittest mocks.
+- Run the full test suite verifying that all 9 tests (7 parser tests + 2 planner tests) pass cleanly.
