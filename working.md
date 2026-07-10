@@ -67,3 +67,41 @@
 ### 5. Orchestration & Integration Test
 - Updated `backend/app.py` to orchestrate workflow run querying and failed logs download for `microsoft/vscode`.
 - Handled potential API-level log download restriction (403 Forbidden when unauthenticated) gracefully by pointing the user to configure `.env`.
+
+## Day 3 Log Parsing & Error Classification
+
+### 1. Core Log Parser Implementation
+- Checked out a new feature branch: `feature/log-parser`.
+- Created `backend/log_parser.py` to handle raw GitHub Actions logs.
+- Implemented standard log operations: reading UTF-8 files, stripping ANSI escape codes, and removing basic noisy lines (timestamps, blank lines).
+
+### 2. Overcoming Early Parsing Weaknesses (Errors & Iterations)
+- **Error:** When tested against a real `django_failure` GitHub Action log, the initial parser threw `UnknownError` because it only searched for explicitly printed Python exceptions (`ModuleNotFoundError`, `SyntaxError`). It completely missed workflow-level failures like `Process completed with exit code 1`.
+- **Error:** The user accidentally provided a directory path when prompted, prompting an `IsADirectoryError` check which was handled gracefully.
+- **Improvement:** Refactored the `remove_noise` logic to aggressively strip environment variables, runner versions, OS details, PR checklists, and Git checkout metadata, while introducing an `is_critical_line()` check to *guarantee* lines containing `##[error]`, `FAILED`, and `Traceback` were never dropped.
+- **Improvement:** Reduced the `error_context` extraction window from a hardcoded 30 lines to dynamically parsing up to 5 lines backwards and 25 lines forwards, stopping perfectly at empty boundaries to isolate the failure.
+
+### 3. Priority-Based Error Detection System
+- Fully rewrote the `detect_error_type` function into a priority-based classifier.
+- Created `ERROR_PATTERNS`, a rigorously ordered list of precompiled regexes that ranks errors (e.g., matching a `SyntaxError` before it falls back to a generic `TestFailure` or `WorkflowExecutionError`).
+- Implemented a `classification_confidence` score (0 to 100) based on whether the match was an exact regex capture group or a generic keyword heuristic.
+- Upgraded `extract_error_message()` to concatenate multiple consecutive log failures into a single clean sentence.
+
+### 4. Unit Testing the Parser
+- Created `backend/tests/test_log_parser.py` using Python's `unittest` framework.
+- Mocked 7 diverse real-world logs (Module Not Found, Syntax Error, Assertion Failure, PR Quality Check Failure, Action Workflow Crash, Dependency npm 404, and Unknown crashes).
+- All 7 tests passed successfully (`python -m unittest backend.tests.test_log_parser`).
+
+### 5. Error Classification Module
+- Implemented `backend/classifier.py` strictly using the Python standard library.
+- Mapped granular `error_types` parsed by `log_parser.py` into broad categories (e.g., standardizing `ModuleNotFoundError` to `ImportError`).
+- Added rule-based severity calculation (`Critical`, `High`, `Medium`, `Low`) based on the category (e.g., `MemoryError` = `Critical`).
+- Added rule-based `recommend_tools()` to point developers towards investigation paths (`StackOverflow`, `Git History`, `NPM Registry`, `PyPI`).
+- Wrote a standalone test block under `if __name__ == "__main__":` which verified the output dictionary payload successfully maps severities and tools.
+
+### 6. Source Control Checkpoint
+- Committed the massive `log_parser.py` refactor, test suite, and `classifier.py`.
+- Pushed branch `feature/log-parser` to origin successfully.
+
+### Current Project State
+The **Ingestion Layer** (GitHub API logs) and the **Parsing/Classification Layer** (Log Parser + Rule-Based Classifier) are now fully implemented and functioning. The system can successfully download a raw `.txt` workflow log, heavily filter out the OS/Git noise, pinpoint the exact traceback, assign a standardized category/severity, and format a clean JSON payload that is primed for the next AI agent reasoning step.
