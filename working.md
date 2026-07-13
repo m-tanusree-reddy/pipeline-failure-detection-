@@ -103,5 +103,32 @@
 - Committed the massive `log_parser.py` refactor, test suite, and `classifier.py`.
 - Pushed branch `feature/log-parser` to origin successfully.
 
+## Day 4 Investigator Agent & Tooling Layer
+
+### 1. Investigation Data Models
+- Created `backend/models/investigation_models.py` defining Pydantic models for orchestration (`InvestigationTask`, `PlannerOutput`, `Evidence`, `EvidenceBundle`, `InvestigatorOutput`).
+- Ensured strong typing and structured inputs/outputs for the agentic investigation phase.
+
+### 2. Base Tool Abstraction
+- Implemented `backend/tools/base_tool.py` containing the `BaseTool` abstract base class.
+- Defined a standard `run(context)` contract that returns a structured dictionary, allowing for extensible tool creation.
+
+### 3. Investigation Tools Implementation
+- Developed `git_history_tool.py` to analyze repository commit history.
+- Developed `pypi_tool.py` for querying the PyPI registry for package metadata and versions.
+- Developed `documentation_tool.py` for fetching and analyzing relevant documentation.
+- Developed `workflow_history_tool.py` for examining past GitHub Actions workflow runs.
+
+### 4. Investigator Agent
+- Implemented `InvestigatorAgent` in `backend/agents/investigator.py`.
+- Designed it to take an execution plan (from the planner) and sequentially trigger injected tools.
+- Included comprehensive error handling to gracefully capture tool failures without crashing the pipeline.
+- Returns a structured `EvidenceBundle` containing the results and success/failure states of all executed tools.
+
+### 5. Unit Testing the Investigation Layer
+- Developed `backend/tests/test_investigator.py` using Python's `unittest` framework.
+- Thoroughly tested `InvestigatorAgent` for successful executions, tool exceptions, and missing tool handling using `unittest.mock.MagicMock`.
+- Ensured all tests pass successfully.
+
 ### Current Project State
-The **Ingestion Layer** (GitHub API logs) and the **Parsing/Classification Layer** (Log Parser + Rule-Based Classifier) are now fully implemented and functioning. The system can successfully download a raw `.txt` workflow log, heavily filter out the OS/Git noise, pinpoint the exact traceback, assign a standardized category/severity, and format a clean JSON payload that is primed for the next AI agent reasoning step.
+The **Ingestion Layer**, **Parsing/Classification Layer**, and now the **Investigator Agent & Tooling Layer** are fully implemented. The system can download workflow logs, parse and classify failures, and structurally execute an investigation plan using specialized modular tools (Git, PyPI, Workflow History, etc.) to gather evidence. The collected `EvidenceBundle` is now ready for the final AI synthesis and summarization step.
