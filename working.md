@@ -132,3 +132,35 @@
 
 ### Current Project State
 The **Ingestion Layer**, **Parsing/Classification Layer**, and now the **Investigator Agent & Tooling Layer** are fully implemented. The system can download workflow logs, parse and classify failures, and structurally execute an investigation plan using specialized modular tools (Git, PyPI, Workflow History, etc.) to gather evidence. The collected `EvidenceBundle` is now ready for the final AI synthesis and summarization step.
+
+## Day 5 Agentic RAG Retrieval Layer
+
+### 1. Retrieval Planner
+- Refactored `backend/agents/planner.py` to strip out all non-deterministic LLM calls.
+- Rebuilt it as a strict, rule-based **Retrieval Strategy Engine** that maps error categories to optimal search queries and target knowledge bases.
+- Returns a structured `RetrievalPlan`.
+
+### 2. Document Collector
+- Built `backend/retrieval/collector.py` to execute the `RetrievalPlan`.
+- Mocked implementations for GitHub Issues, StackOverflow, Python Docs, PyPI, Actions Docs, and Historical Logs.
+- Returns a robust `List[Document]` payload mapping the raw content and metadata.
+
+### 3. Semantic Chunker
+- Built `backend/retrieval/chunker.py` using word-based splitting (250 word max, 50 word overlap) to preserve semantic boundaries.
+- Returns a `List[Chunk]` explicitly tied to the parent document's metadata to prevent context loss.
+
+### 4. Dense Vector Embedder
+- Built `backend/retrieval/embedder.py` leveraging `sentence-transformers` and the lightweight `BAAI/bge-small-en-v1.5` model.
+- Optimized for standard laptop environments by ensuring CPU processing, batch encoding, and strict singleton model loading to eliminate latency overhead on consecutive queries.
+- Returns a `List[EmbeddedChunk]`.
+
+### 5. FAISS Vector Database
+- Built `backend/retrieval/vector_store.py` to index embeddings using `IndexFlatL2` for 100% exact similarity search.
+- Decoupled numerical vector indexing from textual data by building an independent metadata serialization layer using `pickle`.
+- Uses relative `pathlib` parsing so indices (`vector_store.faiss`, `metadata.pkl`) remain strictly within `backend/vector_db/` safely out of version control.
+
+### 6. Semantic Retriever
+- Built `backend/retrieval/retriever.py` to orchestrate the entire end-to-end vector pipeline.
+- Converts real-time error queries into dense vectors using the pre-loaded singleton `Embedder`.
+- Returns the `top_k` matches ranked by lowest L2 distance via `RetrievedDocument` objects.
+- The retrieval backbone is now mathematically solid and ready to feed raw, filtered context to the final LLM Critic Agent.
