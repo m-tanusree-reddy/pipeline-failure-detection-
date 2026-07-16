@@ -164,3 +164,20 @@ The **Ingestion Layer**, **Parsing/Classification Layer**, and now the **Investi
 - Converts real-time error queries into dense vectors using the pre-loaded singleton `Embedder`.
 - Returns the `top_k` matches ranked by lowest L2 distance via `RetrievedDocument` objects.
 - The retrieval backbone is now mathematically solid and ready to feed raw, filtered context to the final LLM Critic Agent.
+
+## Day 6 LLM Generation Layer
+
+### 1. LLM Service
+- Created `backend/services/llm_service.py` to interface with the Gemini API using the `google-genai` SDK.
+- Restricts responses to a structured `AnalysisResult` Pydantic model containing root cause, confidence, explanation, suggested fixes, and cited evidence document indices.
+- Handles model rotation, API errors, timeouts, and quota limits gracefully by returning a structured fallback result.
+- Uses the dynamically configured Gemini model (defaults to gemini-3.1-flash-lite) defined in backend/config.py as the single source of truth.
+
+### 2. Critic Agent
+- Created `backend/agents/critic.py` to verify LLM answers locally using rule-based heuristics (no external API calls).
+- Identifies hallucinations (out-of-bounds cited indices), checks keyword overlap between the explanation and cited documents, and verifies suggested fixes against the root cause.
+
+### 3. Report Generator
+- Created `backend/reporting/report_generator.py` to consolidate the final analysis results and critic evaluations.
+- Dynamically classifies error exceptions (e.g. `ImportError`) from the traceback error log.
+- Provides clean structured visual reports and serialized JSON outputs.
