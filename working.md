@@ -103,84 +103,117 @@
 - Committed the massive `log_parser.py` refactor, test suite, and `classifier.py`.
 - Pushed branch `feature/log-parser` to origin successfully.
 
-## Day 4 Investigator Agent & Tooling Layer
-
-### 1. Investigation Data Models
-- Created `backend/models/investigation_models.py` defining Pydantic models for orchestration (`InvestigationTask`, `PlannerOutput`, `Evidence`, `EvidenceBundle`, `InvestigatorOutput`).
-- Ensured strong typing and structured inputs/outputs for the agentic investigation phase.
-
-### 2. Base Tool Abstraction
-- Implemented `backend/tools/base_tool.py` containing the `BaseTool` abstract base class.
-- Defined a standard `run(context)` contract that returns a structured dictionary, allowing for extensible tool creation.
-
-### 3. Investigation Tools Implementation
-- Developed `git_history_tool.py` to analyze repository commit history.
-- Developed `pypi_tool.py` for querying the PyPI registry for package metadata and versions.
-- Developed `documentation_tool.py` for fetching and analyzing relevant documentation.
-- Developed `workflow_history_tool.py` for examining past GitHub Actions workflow runs.
-
-### 4. Investigator Agent
-- Implemented `InvestigatorAgent` in `backend/agents/investigator.py`.
-- Designed it to take an execution plan (from the planner) and sequentially trigger injected tools.
-- Included comprehensive error handling to gracefully capture tool failures without crashing the pipeline.
-- Returns a structured `EvidenceBundle` containing the results and success/failure states of all executed tools.
-
-### 5. Unit Testing the Investigation Layer
-- Developed `backend/tests/test_investigator.py` using Python's `unittest` framework.
-- Thoroughly tested `InvestigatorAgent` for successful executions, tool exceptions, and missing tool handling using `unittest.mock.MagicMock`.
-- Ensured all tests pass successfully.
-
 ### Current Project State
-The **Ingestion Layer**, **Parsing/Classification Layer**, and now the **Investigator Agent & Tooling Layer** are fully implemented. The system can download workflow logs, parse and classify failures, and structurally execute an investigation plan using specialized modular tools (Git, PyPI, Workflow History, etc.) to gather evidence. The collected `EvidenceBundle` is now ready for the final AI synthesis and summarization step.
+The Ingestion, Parsing, Classification, and now the **Planning** layers are fully implemented. The system can retrieve log files, parse them to pinpoint exceptions, classify their severity/category, and use an LLM-powered planning agent to output a clean, validated investigation strategy for debug tooling execution.
 
-## Day 5 Agentic RAG Retrieval Layer
+## Day 4 AI Planner Agent Implementation
 
-### 1. Retrieval Planner
-- Refactored `backend/agents/planner.py` to strip out all non-deterministic LLM calls.
-- Rebuilt it as a strict, rule-based **Retrieval Strategy Engine** that maps error categories to optimal search queries and target knowledge bases.
-- Returns a structured `RetrievalPlan`.
+### 1. Dependency Integration
+- Installed Google Gemini API SDK `google-genai` inside our virtual environment.
+- Updated `requirements.txt` with all package references properly encoded in UTF-8.
 
-### 2. Document Collector
-- Built `backend/retrieval/collector.py` to execute the `RetrievalPlan`.
-- Mocked implementations for GitHub Issues, StackOverflow, Python Docs, PyPI, Actions Docs, and Historical Logs.
-- Returns a robust `List[Document]` payload mapping the raw content and metadata.
+### 2. Configuration Setup
+- Added `GEMINI_API_KEY` and `GEMINI_MODEL` (defaulting to `gemini-2.5-flash`) configuration values to `backend/config.py`.
 
-### 3. Semantic Chunker
-- Built `backend/retrieval/chunker.py` using word-based splitting (250 word max, 50 word overlap) to preserve semantic boundaries.
-- Returns a `List[Chunk]` explicitly tied to the parent document's metadata to prevent context loss.
+### 3. Pydantic Models for Structured Output
+- Created `backend/models/planner_models.py` defining Pydantic schemas for LLM validation:
+  - `InvestigationStep`: containing `tool` (restricted to supported tools via `Literal`), `priority` (integer), and `reason` (string).
+  - `PlannerOutput`: containing `summary` (string), `investigation_plan` (list of `InvestigationStep`), and `confidence` (float).
 
-### 4. Dense Vector Embedder
-- Built `backend/retrieval/embedder.py` leveraging `sentence-transformers` and the lightweight `BAAI/bge-small-en-v1.5` model.
-- Optimized for standard laptop environments by ensuring CPU processing, batch encoding, and strict singleton model loading to eliminate latency overhead on consecutive queries.
-- Returns a `List[EmbeddedChunk]`.
+### 4. Reusable LLM Service
+- Created `backend/services/llm_service.py` exposing `LLMService`.
+- Configured client connection using `google.genai.Client`.
+- Implemented structured output validation using `GenerateContentConfig(response_schema=response_model)` to guarantee response compliance and handle API timeouts/retries gracefully.
 
-### 5. FAISS Vector Database
-- Built `backend/retrieval/vector_store.py` to index embeddings using `IndexFlatL2` for 100% exact similarity search.
-- Decoupled numerical vector indexing from textual data by building an independent metadata serialization layer using `pickle`.
-- Uses relative `pathlib` parsing so indices (`vector_store.faiss`, `metadata.pkl`) remain strictly within `backend/vector_db/` safely out of version control.
+### 5. AI Planner Agent
+- Implemented `PlannerAgent` inside `backend/agents/planner.py` accepting the `LLMService` via dependency injection.
+- Added strict system prompt formatting to prevent code-fix hallucinations.
+- Added robust error handling, returning a safe default plan (`GitHistory`, `DocumentationSearch`, `StackOverflow`) when the API is inaccessible or fails.
 
-### 6. Semantic Retriever
-- Built `backend/retrieval/retriever.py` to orchestrate the entire end-to-end vector pipeline.
-- Converts real-time error queries into dense vectors using the pre-loaded singleton `Embedder`.
-- Returns the `top_k` matches ranked by lowest L2 distance via `RetrievedDocument` objects.
-- The retrieval backbone is now mathematically solid and ready to feed raw, filtered context to the final LLM Critic Agent.
+- Created `backend/tests/test_planner.py` to assert correct structured response processing and fallback execution under API error states using unittest mocks.
+- Run the full test suite verifying that all 9 tests (7 parser tests + 2 planner tests) pass cleanly.
 
-## Day 6 LLM Generation Layer
+### 7. Environment Diagnosis & Fix (ImportError Resolution)
+- **Root Cause**: The project's virtual environment (`venv`) was not activated in the terminal, so `python -m unittest discover backend/tests` was using the global system Python interpreter, which was missing `google-genai` and `python-dotenv`.
+- **Fix**: Installed `google-genai` and `python-dotenv` into the global Python environment so that both the activated venv and the global interpreter can run the test suite without activation.
+- **Verified**: `python -c "from google import genai; print('Import successful')"` returns success.
+- **All 9 tests pass** using `python -m unittest discover backend/tests` without requiring venv activation.
 
-### 1. LLM Service
-- Created `backend/services/llm_service.py` to interface with the Gemini API using the `google-genai` SDK.
-- Restricts responses to a structured `AnalysisResult` Pydantic model containing root cause, confidence, explanation, suggested fixes, and cited evidence document indices.
-- Handles model rotation, API errors, timeouts, and quota limits gracefully by returning a structured fallback result.
-- Uses the dynamically configured Gemini model (defaults to gemini-3.1-flash-lite) defined in backend/config.py as the single source of truth.
+### 8. Real Gemini API Verification
+- Added `GEMINI_API_KEY` to `backend/.env`.
+- Created `backend/test_real_gemini.py` to run the `PlannerAgent` against the real Gemini API.
+- Discovered that `gemini-2.5-flash` is deprecated for new users and `gemini-2.0-flash` had quota exhaustion on the free tier.
+- Updated default model in `backend/config.py` from `gemini-2.5-flash` → `gemini-flash-latest`, which has valid quota.
+- **Successful Real API Output** for a `ModuleNotFoundError: No module named flask_sqlalchemy` classification:
+  ```
+  Summary:
+  A ModuleNotFoundError occurred because 'flask_sqlalchemy' is missing in the execution
+  environment. The investigation plan focuses on verifying dependency configurations,
+  checking recent git changes to dependency files, and inspecting the CI workflow setup.
 
-### 2. Critic Agent
-- Created `backend/agents/critic.py` to verify LLM answers locally using rule-based heuristics (no external API calls).
-- Identifies hallucinations (out-of-bounds cited indices), checks keyword overlap between the explanation and cited documents, and verifies suggested fixes against the root cause.
+  Confidence: 0.95
 
-### 3. Report Generator
-- Created `backend/reporting/report_generator.py` to consolidate the final analysis results and critic evaluations.
-- Dynamically classifies error exceptions (e.g. `ImportError`) from the traceback error log.
-- Provides clean structured visual reports and serialized JSON outputs.
+  Investigation Plan:
+    1. ConfigurationInspector (Priority: 1) - Inspect requirements.txt/pyproject.toml and CI configs.
+    2. GitHistory (Priority: 2) - Check if flask-sqlalchemy was recently removed from dependencies.
+    3. WorkflowHistory (Priority: 3) - Determine if this failure started after a workflow change.
+    4. PyPI (Priority: 4) - Verify the package name and versioning on PyPI.
+  ```
+
+### 9. LLM Service Resilience — Model Fallback Chain
+- **Problem**: `gemini-flash-latest` and `gemini-3.1-flash-lite` return `503 UNAVAILABLE` under high demand when using structured JSON output (`response_schema`), even though plain text requests succeed.
+- **Root Cause**: Structured output (JSON schema enforcement) routes to a higher-load endpoint on Gemini's free tier.
+- **Fix**: Rewrote `backend/services/llm_service.py` to:
+  - Define a `MODEL_FALLBACK_CHAIN` list: `gemini-3.1-flash-lite` → `gemini-flash-latest` → `gemini-3-flash-preview`.
+  - On `503 UNAVAILABLE`: retry once with 5s backoff, then **skip to the next model** automatically.
+  - On `429 RESOURCE_EXHAUSTED`: skip that model immediately (no retry).
+  - On any other error (4xx, parse): propagate immediately.
+- **Result**: Planner Agent successfully fell back from `gemini-flash-latest` (503) → `gemini-3-flash-preview` and returned a real structured plan:
+  ```
+  Summary: The application is failing due to a missing 'flask_sqlalchemy' dependency
+  in the runtime environment. Investigation will focus on verifying dependency
+  definitions and recent changes to the environment configuration.
+
+  Confidence: 0.95
+
+  Investigation Plan:
+    1. ConfigurationInspector (Priority: 1) - Verify flask-sqlalchemy in requirements.txt/pyproject.toml.
+    2. WorkflowHistory (Priority: 2) - Check recent CI logs for failed/skipped install steps.
+    3. GitHistory (Priority: 3) - Find commits that modified dependency files or build config.
+    4. PyPI (Priority: 4) - Confirm correct package name and version compatibility.
+  ```
+- All 9 unit tests still pass after the refactor.
+
+### 10. Investigation Tools Layer
+Built the full `backend/tools/` package with 4 tools and an orchestrator:
+
+| File | Class | Purpose |
+|------|-------|---------|
+| `base_tool.py` | `BaseTool` | Abstract interface all tools implement (`run(context) → evidence dict`) |
+| `configuration_inspector.py` | `ConfigurationInspector` | Scans requirements.txt, pyproject.toml, etc. to check if failing package is declared |
+| `git_history.py` | `GitHistory` | Runs `git log` on watched paths (requirements, Dockerfile, workflows) to surface relevant commits |
+| `workflow_history.py` | `WorkflowHistory` | Reads local CI logs for error matches; scans .github/workflows YAML for install steps |
+| `pypi_tool.py` | `PyPI` | Queries PyPI JSON API to verify package existence, version, and detect underscore/hyphen typos |
+| `tool_runner.py` | `ToolRunner` | Reads PlannerOutput, sorts tools by priority, executes each, collects evidence |
+| `__init__.py` | — | Package exports for clean imports |
+
+- Added `backend/tests/test_tools.py` with **14 new tests** (all 23 total pass cleanly, zero ResourceWarnings).
+- Created `backend/test_e2e_pipeline.py` end-to-end integration script wiring Planner → ToolRunner → Evidence.
+
+### 11. LLM Service — Dynamic Model Discovery (Major Refactor)
+- **Problem**: Hardcoded model names in fallback chain broke silently when models were deprecated, quota-exhausted, or unavailable.
+- **Solution**: Rewrote `backend/services/llm_service.py` with:
+  - `_discover_models()` calls `client.models.list()` at startup to auto-detect all compatible text-generation Gemini models.
+  - Filters out non-text models (embedding, imagen, veo, tts, audio, live, robotics, etc.).
+  - Ranks discovered models Flash-first, then Pro — fully automatic, no hardcoded names.
+  - Smart error handling per model:
+    - `503 UNAVAILABLE` → retry up to 2× with 5s→10s backoff, then skip to next model.
+    - `429 RESOURCE_EXHAUSTED` → skip immediately.
+    - `400/401/403/404` → skip immediately (fatal, no retry).
+    - Other → skip immediately.
+  - Full emoji logging showing selected model, overload, quota, and success at each step.
+- **Verified live**: Automatically traversed `gemini-flash-latest` (503) → `gemini-2.5-flash` (404 skip) → `gemini-2.0-flash` variants (429 skip) → working model → **confidence 0.95 output**.
+- All 23 unit tests pass. `test_planner_live.py` works without any manual `.env` changes.
 
 ## Day 7 Backend Web Server & Premium React Frontend Integration
 
@@ -216,4 +249,3 @@ The **Ingestion Layer**, **Parsing/Classification Layer**, and now the **Investi
 - Verified log parser tests and investigator tests run and pass with `OK`.
 - Verified React client compiles and bundles successfully with `npm run build` in **2.24s**.
 - Both servers are running and fully operational locally.
-

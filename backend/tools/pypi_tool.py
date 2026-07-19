@@ -1,46 +1,127 @@
+"""
+PyPI Tool
+
+Queries the PyPI JSON API to verify whether a package exists, fetch
+its latest version, and check if the package name is correct (handles
+common underscore/hyphen typos).
+"""
 import logging
-import requests
-from typing import Any, Dict
-from backend.tools.base_tool import BaseTool
+import re
+import urllib.request
+import urllib.error
+import json
+from typing import Dict, Any, List
+
+from tools.base_tool import BaseTool
 
 logger = logging.getLogger(__name__)
 
-class PyPITool(BaseTool):
+PYPI_API_BASE = "https://pypi.org/pypi/{package}/json"
+
+
+class PyPI(BaseTool):
     """
-    Tool to fetch package metadata from the PyPI API.
-    Handles network failures gracefully.
+    Validates a missing package against the PyPI registry.
+    Checks existence, retrieves latest version, and surfaces
+    common name variants (e.g. flask_sqlalchemy vs flask-sqlalchemy).
     """
-    
+
+    name = "PyPI"
+
     def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        package_name = context.get("package", "")
+        error_message: str = context.get("error_message", "")
+        error_type: str = context.get("error_type", "")
+
+        package_name = self._extract_package_name(error_message, error_type)
         if not package_name:
-            logger.warning("PyPITool: No package name provided in context.")
-            return {"error": "No package name provided"}
-            
-        logger.info(f"PyPITool running for package: {package_name}")
-        url = f"https://pypi.org/pypi/{package_name}/json"
-        
+            return self._base_result(
+                "not_found",
+                ["Could not extract a package name from the error message."],
+            )
+
+        evidence: List[str] = []
+
+        # Try canonical name and hyphenated variant
+        variants = list(dict.fromkeys([
+            package_name,
+            package_name.replace("_", "-"),
+            package_name.replace("-", "_"),
+        ]))
+
+        found_package = None
+        for variant in variants:
+            info = self._fetch_pypi(variant)
+            if info:
+                found_package = info
+                evidence.append(
+                    f"✓ Package '{variant}' exists on PyPI."
+                )
+                evidence.append(
+                    f"  Latest version : {info.get('version', 'unknown')}"
+                )
+                evidence.append(
+                    f"  Summary        : {info.get('summary', 'N/A')[:100]}"
+                )
+                evidence.append(
+                    f"  PyPI URL       : https://pypi.org/project/{variant}/"
+                )
+                if variant != package_name:
+                    evidence.append(
+                        f"  ⚠ Note: The correct PyPI name is '{variant}', "
+                        f"not '{package_name}'. Check your dependency file for typos."
+                    )
+                break
+
+        if not found_package:
+            evidence.append(
+                f"✗ Package '{package_name}' was NOT found on PyPI."
+            )
+            evidence.append(
+                "  This may indicate a typo in the import statement or "
+                "that the package is internal/private."
+            )
+            return self._base_result("not_found", evidence)
+
+        return self._base_result(
+            "success", evidence, raw=found_package
+        )
+
+    def _fetch_pypi(self, package: str) -> Dict | None:
+        """Fetches package metadata from the PyPI JSON API."""
+        url = PYPI_API_BASE.format(package=package)
         try:
-            response = requests.get(url, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "pipeline-debug-agent/1.0"},
+            )
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
                 info = data.get("info", {})
                 return {
-                    "package": package_name,
+                    "name": info.get("name"),
                     "version": info.get("version"),
                     "summary": info.get("summary"),
-                    "requires_python": info.get("requires_python"),
                     "home_page": info.get("home_page"),
-                    "project_urls": info.get("project_urls", {})
                 }
-            elif response.status_code == 404:
-                return {"error": f"Package '{package_name}' not found on PyPI", "status_code": 404}
-            else:
-                return {"error": f"Failed to fetch PyPI data. Status code: {response.status_code}", "status_code": response.status_code}
-                
-        except requests.RequestException as e:
-            logger.error(f"PyPITool: Network error occurred: {e}")
-            return {
-                "error": f"Network error occurred while fetching from PyPI: {str(e)}",
-                "package": package_name
-            }
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return None  # Package does not exist
+            logger.warning(f"PyPI HTTP error for '{package}': {e}")
+            return None
+        except Exception as e:
+            logger.warning(f"PyPI lookup failed for '{package}': {e}")
+            return None
+
+    @staticmethod
+    def _extract_package_name(error_message: str, error_type: str) -> str:
+        """Extract the missing package name from common error messages."""
+        patterns = [
+            r"No module named ['\"]([^'\"]+)['\"]",
+            r"cannot import name .+ from ['\"]([^'\"]+)['\"]",
+            r"ModuleNotFoundError: No module named ['\"]([^'\"]+)['\"]",
+        ]
+        for pat in patterns:
+            match = re.search(pat, error_message, re.IGNORECASE)
+            if match:
+                return match.group(1).split(".")[0]
+        return ""

@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 from dotenv import load_dotenv
 import os
 
@@ -9,6 +10,10 @@ load_dotenv(dotenv_path)
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 GITHUB_API_URL = os.getenv("GITHUB_API_URL", "https://api.github.com")
 TIMEOUT = int(os.getenv("TIMEOUT", "30"))
+
+# Gemini API Configuration
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
 
 # Application Settings
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

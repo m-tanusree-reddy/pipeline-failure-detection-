@@ -1,254 +1,315 @@
 """
-LLM Service module for automated CI/CD pipeline failure investigation.
-Interacts with the Gemini API to analyze failures using retrieved evidence.
+LLM Service — Gemini API with Dynamic Model Discovery
+
+Automatically discovers available text-generation models at startup,
+ranks them (Flash first, then Pro), and tries them in order on each
+request. Handles transient 503 errors with backoff and skips quota/
+fatal errors immediately.
 """
-
 import logging
-import os
-import sys
-from typing import List, Optional
+import time
+from typing import Type, TypeVar, List, Dict, Any
+
 from pydantic import BaseModel, Field
-
-# Add project root to sys.path at startup to enable consistent imports
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if project_root not in sys.path:
-    sys.path.append(project_root)
-
 from google import genai
 from google.genai import types
-from google.genai.errors import APIError
 
-# Load environment variables
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
-
-from backend.config import GEMINI_API_KEY, GEMINI_MODEL
-from backend.retrieval.retriever import RetrievedDocument
+from config import GEMINI_API_KEY, GEMINI_MODEL
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T", bound=BaseModel)
+
 
 class AnalysisResult(BaseModel):
-    """
-    Pydantic model representing the structured result of the root cause analysis.
-    """
-    root_cause: str = Field(
-        ..., 
-        description="A concise summary of the determined root cause of the failure."
-    )
-    confidence: int = Field(
-        ..., 
-        description="Confidence score from 0 to 100 based on the supporting evidence.",
-        ge=0,
-        le=100
-    )
-    explanation: str = Field(
-        ..., 
-        description="Detailed explanation of how the evidence supports the root cause."
-    )
-    suggested_fixes: List[str] = Field(
-        ..., 
-        description="List of actionable, suggested fixes to resolve the pipeline failure."
-    )
-    supporting_documents: List[int] = Field(
-        ..., 
-        description="1-based indices of the retrieved documents that support the analysis."
-    )
+    root_cause: str = Field(..., description="A concise summary of the determined root cause.")
+    confidence: int = Field(..., ge=0, le=100, description="Confidence score from 0 to 100.")
+    explanation: str = Field(..., description="Detailed explanation grounded in evidence.")
+    suggested_fixes: List[str] = Field(..., description="Actionable fixes to resolve the failure.")
+    supporting_documents: List[int] = Field(..., description="1-based indices of supporting documents.")
+
+# ── Model Filtering ───────────────────────────────────────────────
+# Model name substrings that identify non-text-generation models.
+# These are excluded from the discovered candidate list.
+_EXCLUDE_KEYWORDS: List[str] = [
+    "embedding", "imagen", "veo", "tts", "audio", "live",
+    "translate", "robotics", "research", "computer-use",
+    "aqa", "lyria", "antigravity", "nano", "image",
+]
+
+# Ranking preference: index 0 = highest priority.
+# Flash models are preferred for structured output (faster, cheaper).
+_RANK_KEYWORDS: List[str] = ["flash", "pro"]
 
 
+def _model_score(name: str) -> int:
+    """Lower = higher priority. flash=0, pro=1, other=2."""
+    for i, kw in enumerate(_RANK_KEYWORDS):
+        if kw in name.lower():
+            return i
+    return len(_RANK_KEYWORDS)
+
+
+def _is_candidate(model_obj: Any) -> bool:
+    """
+    Returns True if the model object represents a usable text-generation
+    model that supports generateContent.
+    """
+    name: str = model_obj.name.replace("models/", "")
+
+    # Must be a Gemini model
+    if not name.startswith("gemini"):
+        return False
+
+    # Exclude specialised non-text models
+    if any(kw in name.lower() for kw in _EXCLUDE_KEYWORDS):
+        return False
+
+    # If the SDK exposes supported_generation_methods, respect it
+    methods = getattr(model_obj, "supported_generation_methods", None) or []
+    if methods and "generateContent" not in methods:
+        return False
+
+    return True
+
+
+# ── LLMService ────────────────────────────────────────────────────
 class LLMService:
     """
-    Interacts directly with the Gemini API to analyze pipeline failures.
-    Does not know about FAISS, Retrieval, GitHub, Planner, or Chunker.
+    Wraps the Google Gemini API with:
+      • Dynamic model discovery at startup
+      • Flash-first ranking
+      • Per-model retry with exponential backoff on 503
+      • Immediate skip on 429 quota or fatal 4xx errors
     """
 
-    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
-        """
-        Initializes the LLMService.
-
-        Args:
-            api_key: Optional Gemini API Key override.
-            model: Optional Gemini Model name override.
-        """
+    def __init__(self, api_key: str = None, model: str = None):
         self.api_key = api_key or GEMINI_API_KEY
-        self.model = model or GEMINI_MODEL
+        self.preferred_model: str = model or GEMINI_MODEL
 
         if not self.api_key:
-            logger.warning(
-                "GEMINI_API_KEY is not set. API calls will fail unless "
-                "provided via alternative environmental credentials."
-            )
+            logger.warning("GEMINI_API_KEY is not set. LLM calls will fail.")
+
+        self.client: genai.Client | None = None
+        try:
+            self.client = genai.Client(api_key=self.api_key) if self.api_key else genai.Client()
+        except Exception as e:
+            logger.error(f"Failed to initialise GenAI client: {e}")
+
+        # Discover and rank models once at startup
+        self._model_chain: List[str] = self._discover_models()
+
+    # ── Model Discovery ───────────────────────────────────────────
+
+    def _discover_models(self) -> List[str]:
+        """
+        Calls client.models.list(), filters to compatible text-generation
+        models, then sorts them: preferred model first, then Flash > Pro.
+        """
+        if not self.client:
+            logger.warning("Client not initialised; skipping model discovery.")
+            return [self.preferred_model] if self.preferred_model else []
 
         try:
-            if self.api_key:
-                self.client = genai.Client(api_key=self.api_key)
-            else:
-                self.client = genai.Client()
+            raw_models = list(self.client.models.list())
         except Exception as e:
-            logger.error(f"Failed to initialize GenAI client: {e}")
-            self.client = None
+            logger.warning(f"Model discovery failed ({e}). Using preferred model only.")
+            return [self.preferred_model] if self.preferred_model else []
 
-    def analyze_failure(
-        self, 
-        pipeline_error: str, 
-        retrieved_documents: List[RetrievedDocument]
-    ) -> AnalysisResult:
-        """
-        Analyzes the given pipeline error using the retrieved documents as context.
-
-        Args:
-            pipeline_error: The raw pipeline traceback or error message.
-            retrieved_documents: Chunks from retrieval store to serve as evidence.
-
-        Returns:
-            An AnalysisResult object containing root cause, confidence, 
-            explanations, suggested fixes, and supporting documents list.
-        """
-        # Construct the prompt based on the specified structure
-        prompt_lines = [
-            "You are an expert DevOps engineer.",
-            "Analyze the following CI/CD failure.",
-            "",
-            "Pipeline Error",
-            "<error>",
-            pipeline_error,
-            "</error>",
-            "",
-            "Relevant Evidence"
+        candidates: List[str] = [
+            m.name.replace("models/", "")
+            for m in raw_models
+            if _is_candidate(m)
         ]
 
-        for i, doc in enumerate(retrieved_documents, 1):
-            prompt_lines.extend([
-                f"Document {i}",
-                f"Source: {doc.chunk.source if hasattr(doc, 'chunk') else 'Unknown'}",
-                f"Content:\n{doc.chunk.content if hasattr(doc, 'chunk') else ''}",
-                "-------------------"
-            ])
+        # Sort: preferred_model always first, then by flash/pro ranking
+        def sort_key(name: str) -> tuple:
+            return (0 if name == self.preferred_model else 1, _model_score(name))
 
-        prompt_lines.extend([
-            "Based ONLY on the supplied evidence",
-            "Determine",
-            "1 Root Cause",
-            "2 Confidence (0-100)",
-            "3 Explanation",
-            "4 Suggested Fixes",
-            "5 Which retrieved documents support your answer",
-            "Return STRICT JSON."
-        ])
+        candidates.sort(key=sort_key)
 
-        prompt = "\n".join(prompt_lines)
+        logger.info(f"Discovered {len(candidates)} compatible model(s).")
+        logger.info(f"Selected model order (first 8): {candidates[:8]}")
+        return candidates
 
+    # ── Error Helpers ─────────────────────────────────────────────
+
+    @staticmethod
+    def _is_overload(e: Exception) -> bool:
+        """503 UNAVAILABLE — temporary, worth retrying."""
+        s = str(e)
+        return "503" in s or "UNAVAILABLE" in s
+
+    @staticmethod
+    def _is_quota(e: Exception) -> bool:
+        """429 RESOURCE_EXHAUSTED — skip model immediately."""
+        s = str(e)
+        return "429" in s or "RESOURCE_EXHAUSTED" in s
+
+    @staticmethod
+    def _is_fatal(e: Exception) -> bool:
+        """400/401/403/404 — configuration errors, no point retrying."""
+        s = str(e)
+        return any(code in s for code in ("400 ", "401 ", "403 ", "404 "))
+
+    # ── Core Completion ───────────────────────────────────────────
+
+    def get_structured_completion(
+        self,
+        messages: List[Dict[str, str]],
+        response_model: Type[T],
+        temperature: float = 0.2,
+    ) -> T:
+        """
+        Sends messages to the Gemini API and parses the response into
+        response_model using structured JSON output.
+
+        Tries each model in _model_chain in order:
+          • 503  → retry up to 2 times with exponential backoff, then next model
+          • 429  → skip to next model immediately
+          • 4xx  → skip to next model immediately
+          • Other→ skip to next model immediately
+        """
         if not self.client:
-            logger.error("LLMService client is not initialized.")
-            return self._create_fallback_result("GenAI client not initialized.")
+            raise ValueError("GenAI client not initialised (missing API key?).")
 
-        try:
-            logger.info(f"Invoking Gemini model '{self.model}' for structured failure analysis...")
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=AnalysisResult,
-                    temperature=0.1,
-                )
+        if not self._model_chain:
+            raise RuntimeError(
+                "No compatible Gemini models discovered. "
+                "Check your API key and network access."
             )
 
-            if not response.text:
-                logger.error("Received empty response from Gemini API.")
-                return self._create_fallback_result("Empty response from Gemini API.")
+        # Build prompt from message list
+        system_instruction = ""
+        user_parts: List[str] = []
+        for msg in messages:
+            if msg.get("role") == "system":
+                system_instruction = msg.get("content", "")
+            else:
+                user_parts.append(msg.get("content", ""))
+        prompt = "\n\n".join(user_parts)
 
-            logger.info("Structured response successfully retrieved from Gemini.")
-            try:
-                result = AnalysisResult.model_validate_json(response.text)
-                # Bounding confidence scores to 0-100 range in case LLM ignored field validation
-                result.confidence = max(0, min(100, result.confidence))
-                return result
-            except Exception as parse_err:
-                logger.error(f"Failed to parse or validate JSON response: {parse_err}. Raw text: {response.text}")
-                return self._create_fallback_result(f"Invalid JSON format or model validation failure: {parse_err}")
+        last_error: Exception = RuntimeError("All models exhausted.")
 
-        except APIError as api_err:
-            logger.error(f"Gemini API Error occurred: {api_err}")
-            return self._create_fallback_result(f"Gemini API Error: {api_err}")
+        for model in self._model_chain:
+            max_retries = 2
+            backoff = 5.0  # seconds — longer than default for 503 overload
+
+            for attempt in range(max_retries):
+                try:
+                    logger.info(
+                        f"Calling model '{model}' "
+                        f"(attempt {attempt + 1}/{max_retries})..."
+                    )
+                    response = self.client.models.generate_content(
+                        model=model,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_instruction or None,
+                            response_mime_type="application/json",
+                            response_schema=response_model,
+                            temperature=temperature,
+                        ),
+                    )
+
+                    text = response.text
+                    if not text:
+                        raise ValueError("Received empty response from Gemini API.")
+
+                    logger.info(f"✓ Model '{model}' returned a valid response.")
+                    try:
+                        return response_model.model_validate_json(text)
+                    except AttributeError:
+                        return response_model.parse_raw(text)  # pydantic v1 compat
+
+                except Exception as e:
+                    last_error = e
+                    short = str(e)[:120]
+
+                    if self._is_fatal(e):
+                        logger.warning(
+                            f"✗ Model '{model}' — fatal error (skipping): {short}"
+                        )
+                        break  # try next model
+
+                    if self._is_quota(e):
+                        logger.warning(
+                            f"✗ Model '{model}' — quota exhausted (skipping): {short}"
+                        )
+                        break  # try next model
+
+                    if self._is_overload(e):
+                        if attempt < max_retries - 1:
+                            logger.warning(
+                                f"⚠ Model '{model}' overloaded (503), "
+                                f"attempt {attempt + 1}/{max_retries}. "
+                                f"Retrying in {backoff:.0f}s..."
+                            )
+                            time.sleep(backoff)
+                            backoff *= 2
+                            continue  # retry same model
+                        else:
+                            logger.warning(
+                                f"✗ Model '{model}' still unavailable after "
+                                f"{max_retries} attempts. Trying next model."
+                            )
+                            break  # try next model
+
+                    # Unknown / unexpected error
+                    logger.warning(
+                        f"✗ Model '{model}' — unexpected error (skipping): {short}"
+                    )
+                    break  # try next model
+
+        logger.error(f"All models in chain exhausted. Last error: {last_error}")
+        raise last_error
+
+    def analyze_failure(self, pipeline_error: str, retrieved_documents: List[Any]) -> AnalysisResult:
+        """Compatibility API for retrieval pipeline modules."""
+        evidence_lines: List[str] = []
+        for i, doc in enumerate(retrieved_documents, 1):
+            chunk = getattr(doc, "chunk", None)
+            source = getattr(chunk, "source", "Unknown")
+            content = getattr(chunk, "content", "")
+            evidence_lines.append(f"Document {i} | Source: {source}\n{content}")
+
+        system_prompt = (
+            "You are an expert DevOps engineer.\n"
+            "Analyze the CI/CD pipeline failure using ONLY the provided evidence.\n"
+            "Return strict JSON matching the schema."
+        )
+        user_prompt = (
+            f"Pipeline Error:\n{pipeline_error}\n\n"
+            f"Relevant Evidence:\n{'\n\n'.join(evidence_lines) if evidence_lines else 'No retrieved evidence.'}\n\n"
+            "Return:\n"
+            "1) root_cause\n2) confidence (0-100)\n3) explanation\n4) suggested_fixes\n5) supporting_documents"
+        )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        try:
+            result = self.get_structured_completion(
+                messages=messages,
+                response_model=AnalysisResult,
+                temperature=0.1,
+            )
+            result.confidence = max(0, min(100, result.confidence))
+            return result
         except Exception as e:
-            logger.error(f"Unexpected error in LLM Service generation: {e}")
-            return self._create_fallback_result(f"Unexpected error: {e}")
+            logger.error(f"Failed to analyze failure via LLMService: {e}")
+            return self._create_fallback_result(str(e))
 
-    def _create_fallback_result(self, error_message: str) -> AnalysisResult:
-        """
-        Creates a graceful fallback AnalysisResult object when API/generation failures occur.
-        """
+    @staticmethod
+    def _create_fallback_result(error_message: str) -> AnalysisResult:
         return AnalysisResult(
             root_cause="Unknown root cause due to generation error.",
             confidence=0,
             explanation=f"Failed to analyze the pipeline error because of: {error_message}",
             suggested_fixes=[
                 "Check the LLM service configuration and API key.",
-                "Verify connection and quota for the Gemini API."
+                "Verify Gemini API availability and quota.",
             ],
-            supporting_documents=[]
+            supporting_documents=[],
         )
-
-
-if __name__ == "__main__":
-    # Test suite with mocked retrieval output
-    from backend.retrieval.chunker import Chunk
-
-    # Create logger console handler for test execution
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-
-    print("\n--- Running LLMService Mock Test ---")
-
-    # Construct mock retrieved document 1
-    mock_chunk_1 = Chunk(
-        chunk_id="chunk-f3a1-4a4b",
-        document_id="doc-101",
-        source="requirements.txt",
-        title="Python Project Requirements",
-        content="requests==2.31.0\nurllib3==2.0.7\n# PyYAML is commented out\n# pyyaml==6.0.1",
-        url="https://github.com/org/repo/blob/main/requirements.txt",
-        metadata={},
-        chunk_index=1,
-        total_chunks=1
-    )
-    doc_1 = RetrievedDocument(chunk=mock_chunk_1, score=0.12, rank=1)
-
-    # Construct mock retrieved document 2
-    mock_chunk_2 = Chunk(
-        chunk_id="chunk-c4b2-9d3f",
-        document_id="doc-102",
-        source="config_loader.py",
-        title="Configuration Parser Module",
-        content="import yaml\n\ndef load_config(path):\n    with open(path, 'r') as f:\n        return yaml.safe_load(f)",
-        url="https://github.com/org/repo/blob/main/config_loader.py",
-        metadata={},
-        chunk_index=1,
-        total_chunks=1
-    )
-    doc_2 = RetrievedDocument(chunk=mock_chunk_2, score=0.25, rank=2)
-
-    # Mock error trace
-    mock_error = (
-        "Traceback (most recent call last):\n"
-        "  File \"main.py\", line 4, in <module>\n"
-        "    from config_loader import load_config\n"
-        "  File \"config_loader.py\", line 1, in <module>\n"
-        "    import yaml\n"
-        "ModuleNotFoundError: No module named 'yaml'"
-    )
-
-    # Instantiate service
-    service = LLMService()
-    
-    # Run analysis
-    analysis_result = service.analyze_failure(
-        pipeline_error=mock_error,
-        retrieved_documents=[doc_1, doc_2]
-    )
-
-    print("\n[Mock Analysis Result Output]")
-    print(analysis_result.model_dump_json(indent=2))
