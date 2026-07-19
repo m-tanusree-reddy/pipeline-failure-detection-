@@ -278,9 +278,10 @@ class LLMService:
             "Analyze the CI/CD pipeline failure using ONLY the provided evidence.\n"
             "Return strict JSON matching the schema."
         )
+        evidence_text = '\n\n'.join(evidence_lines) if evidence_lines else 'No retrieved evidence.'
         user_prompt = (
             f"Pipeline Error:\n{pipeline_error}\n\n"
-            f"Relevant Evidence:\n{'\n\n'.join(evidence_lines) if evidence_lines else 'No retrieved evidence.'}\n\n"
+            f"Relevant Evidence:\n{evidence_text}\n\n"
             "Return:\n"
             "1) root_cause\n2) confidence (0-100)\n3) explanation\n4) suggested_fixes\n5) supporting_documents"
         )
