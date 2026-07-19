@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CI Debug Agent | AI-Powered CI/CD Failure Investigation</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-container": "#181f31",
+                    "tertiary-fixed": "#6bff8f",
+                    "on-primary-fixed": "#001a43",
+                    "secondary-fixed": "#eaddff",
+                    "surface-tint": "#afc6ff",
+                    "on-tertiary-fixed-variant": "#005321",
+                    "on-primary": "#002d6c",
+                    "primary-fixed": "#d9e2ff",
+                    "secondary": "#d2bbff",
+                    "on-background": "#dbe2fb",
+                    "on-surface-variant": "#c2c6d6",
+                    "primary": "#afc6ff",
+                    "surface-dim": "#0c1324",
+                    "secondary-fixed-dim": "#d2bbff",
+                    "error": "#ffb4ab",
+                    "on-secondary-fixed": "#25005a",
+                    "on-secondary-fixed-variant": "#5a00c6",
+                    "surface-container-highest": "#2d3448",
+                    "surface-variant": "#2d3448",
+                    "inverse-on-surface": "#293043",
+                    "on-secondary": "#3f008e",
+                    "tertiary-container": "#00a74b",
+                    "primary-container": "#528dff",
+                    "inverse-primary": "#0059c6",
+                    "tertiary": "#4ae176",
+                    "on-error-container": "#ffdad6",
+                    "primary-fixed-dim": "#afc6ff",
+                    "surface-container-high": "#232a3c",
+                    "inverse-surface": "#dbe2fb",
+                    "on-tertiary-container": "#003111",
+                    "on-error": "#690005",
+                    "on-secondary-container": "#c9aeff",
+                    "on-primary-fixed-variant": "#004398",
+                    "outline-variant": "#424753",
+                    "secondary-container": "#6001d1",
+                    "on-surface": "#dbe2fb",
+                    "on-tertiary": "#003915",
+                    "on-primary-container": "#00275f",
+                    "tertiary-fixed-dim": "#4ae176",
+                    "surface-bright": "#32394c",
+                    "surface-container-lowest": "#070e1f",
+                    "error-container": "#93000a",
+                    "on-tertiary-fixed": "#002109",
+                    "surface": "#0c1324",
+                    "surface-container-low": "#141b2d",
+                    "outline": "#8c909f",
+                    "background": "#0c1324"
+            },
+            "borderRadius": {
+                    "DEFAULT": "1rem",
+                    "lg": "2rem",
+                    "xl": "3rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "xs": "8px",
+                    "lg": "40px",
+                    "sm": "16px",
+                    "base": "4px",
+                    "container-max": "1440px",
+                    "gutter": "24px",
+                    "md": "24px",
+                    "xl": "64px"
+            },
+            "fontFamily": {
+                    "label-caps": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "headline-lg": ["Inter"],
+                    "body-md": ["Inter"],
+                    "code-sm": ["JetBrains Mono"],
+                    "display-lg": ["Inter"],
+                    "headline-md": ["Inter"],
+                    "code-md": ["JetBrains Mono"],
+                    "body-sm": ["Inter"]
+            },
+            "fontSize": {
+                    "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "code-sm": ["12px", {"lineHeight": "18px", "fontWeight": "400"}],
+                    "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "code-md": ["14px", {"lineHeight": "22px", "fontWeight": "400"}],
+                    "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            background-color: #0c1324;
+            color: #dbe2fb;
+            -webkit-font-smoothing: antialiased;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glow-primary {
+            box-shadow: 0 0 20px 0px rgba(175, 198, 255, 0.15);
+        }
+        .pipeline-line {
+            background: linear-gradient(90deg, transparent, #afc6ff, transparent);
+            background-size: 200% 100%;
+            animation: flow 3s linear infinite;
+        }
+        @keyframes flow {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        .bento-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 24px;
+        }
+        .glass-card {
+            background: rgba(20, 27, 45, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .glass-card:hover {
+            border-color: rgba(175, 198, 255, 0.3);
+            transform: translateY(-4px);
+        }
+    </style>
+</head>
+<body class="font-body-md overflow-x-hidden">
+<!-- Header / TopNavBar -->
+<header class="fixed top-0 w-full z-50 bg-surface/60 backdrop-blur-md border-b border-white/10 shadow-sm">
+<div class="flex justify-between items-center h-16 px-md max-w-container-max mx-auto">
+<div class="flex items-center gap-sm">
+<span class="font-headline-md text-headline-md font-bold text-on-surface">CI Debug Agent</span>
+</div>
+<nav class="hidden md:flex items-center gap-md">
+<a class="text-primary font-bold border-b-2 border-primary pb-1 font-body-md text-body-md" href="#">Home</a>
+<a class="text-on-surface-variant hover:text-on-surface transition-colors font-body-md text-body-md" href="#">Architecture</a>
+<a class="text-on-surface-variant hover:text-on-surface transition-colors font-body-md text-body-md" href="#">Features</a>
+<a class="text-on-surface-variant hover:text-on-surface transition-colors font-body-md text-body-md" href="#">Dashboard</a>
+</nav>
+<div class="flex items-center gap-sm">
+<button class="bg-primary text-on-primary font-bold py-2 px-6 rounded-full hover:opacity-90 active:scale-95 transition-all text-body-sm font-body-sm">
+                    GitHub
+                </button>
+</div>
+</div>
+</header>
+<main class="relative pt-16">
+<!-- Hero Section -->
+<section class="relative min-h-[921px] flex items-center overflow-hidden">
+<!-- Shader Background -->
+
+<div class="relative z-10 max-w-container-max mx-auto px-md w-full grid grid-cols-1 lg:grid-cols-2 gap-xl items-center py-xl">
+<!-- Left Content -->
+<div class="flex flex-col gap-md">
+<div class="inline-flex items-center gap-xs bg-primary/10 border border-primary/20 px-4 py-1 rounded-full w-fit">
+<span class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span>
+<span class="text-label-caps font-label-caps text-primary">v2.4.0 Engine Active</span>
+</div>
+<h1 class="font-display-lg text-display-lg text-on-surface leading-tight">
+                        AI-Powered CI/CD <span class="text-primary">Failure Investigation</span>
+</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-xl">
+                        Upload a failed GitHub Actions log and let autonomous AI agents determine the root cause, retrieve supporting evidence, validate conclusions, and generate a comprehensive failure report.
+                    </p>
+<div class="flex flex-wrap gap-sm pt-sm">
+<button class="bg-primary text-on-primary font-bold py-4 px-8 rounded-full glow-primary hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-sm">
+                            Analyze Pipeline
+                            <span class="material-symbols-outlined text-[20px]">arrow_forward</span>
+</button>
+<button class="border border-outline text-on-surface font-bold py-4 px-8 rounded-full hover:bg-white/5 transition-all">
+                            View Demo
+                        </button>
+</div>
+</div>
+<!-- Right Content: Pipeline Visualization -->
+<div class="relative p-8 glass-card rounded-lg hidden lg:block overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent"></div>
+<div class="relative grid grid-cols-3 gap-y-12 gap-x-4 items-center">
+<!-- Stage Helper Function -->
+<!-- Stage 1 -->
+<div class="flex flex-col items-center gap-xs">
+<div class="w-12 h-12 rounded-lg bg-surface-container-high border border-outline-variant flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">data_object</span>
+</div>
+<span class="text-label-caps font-label-caps text-on-surface-variant">GitHub Actions</span>
+</div>
+<div class="relative h-px w-full"><div class="pipeline-line h-px w-full absolute top-1/2"></div></div>
+<!-- Stage 2 -->
+<div class="flex flex-col items-center gap-xs">
+<div class="w-12 h-12 rounded-lg bg-surface-container-high border border-outline-variant flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">account_tree</span>
+</div>
+<span class="text-label-caps font-label-caps text-on-surface-variant">Parser</span>
+</div>
+<!-- Row 2 -->
+<div class="flex flex-col items-center gap-xs">
+<div class="w-12 h-12 rounded-lg bg-surface-container-high border border-outline-variant flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">category</span>
+</div>
+<span class="text-label-caps font-label-caps text-on-surface-variant">Classifier</span>
+</div>
+<div class="relative h-px w-full"><div class="pipeline-line h-px w-full absolute top-1/2"></div></div>
+<div class="flex flex-col items-center gap-xs">
+<div class="w-12 h-12 rounded-lg bg-surface-container-high border border-outline-variant flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">assignment_ind</span>
+</div>
+<span class="text-label-caps font-label-caps text-on-surface-variant">Planner</span>
+</div>
+<!-- Row 3 -->
+<div class="flex flex-col items-center gap-xs">
+<div class="w-12 h-12 rounded-lg bg-surface-container-high border border-outline-variant flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">database</span>
+</div>
+<span class="text-label-caps font-label-caps text-on-surface-variant">Vector DB</span>
+</div>
+<div class="relative h-px w-full"><div class="pipeline-line h-px w-full absolute top-1/2"></div></div>
+<div class="flex flex-col items-center gap-xs">
+<div class="w-12 h-12 rounded-lg bg-primary/20 border border-primary/40 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">psychology</span>
+</div>
+<span class="text-label-caps font-label-caps text-primary">LLM Engine</span>
+</div>
+<!-- Row 4 -->
+<div class="flex flex-col items-center gap-xs">
+<div class="w-12 h-12 rounded-lg bg-surface-container-high border border-outline-variant flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">fact_check</span>
+</div>
+<span class="text-label-caps font-label-caps text-on-surface-variant">Critic</span>
+</div>
+<div class="relative h-px w-full"><div class="pipeline-line h-px w-full absolute top-1/2"></div></div>
+<div class="flex flex-col items-center gap-xs">
+<div class="w-12 h-12 rounded-lg bg-tertiary/20 border border-tertiary/40 flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined">description</span>
+</div>
+<span class="text-label-caps font-label-caps text-tertiary">Final Report</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Stats/Social Proof -->
+<section class="border-y border-white/5 py-lg bg-surface-container-lowest">
+<div class="max-w-container-max mx-auto px-md grid grid-cols-2 md:grid-cols-4 gap-md">
+<div class="flex flex-col">
+<span class="text-display-lg font-display-lg text-on-surface">98%</span>
+<span class="text-label-caps font-label-caps text-on-surface-variant">Success Rate</span>
+</div>
+<div class="flex flex-col">
+<span class="text-display-lg font-display-lg text-on-surface">&lt;10s</span>
+<span class="text-label-caps font-label-caps text-on-surface-variant">Mean Time to Diagnose</span>
+</div>
+<div class="flex flex-col">
+<span class="text-display-lg font-display-lg text-on-surface">50M+</span>
+<span class="text-label-caps font-label-caps text-on-surface-variant">Logs Parsed</span>
+</div>
+<div class="flex flex-col">
+<span class="text-display-lg font-display-lg text-on-surface">0s</span>
+<span class="text-label-caps font-label-caps text-on-surface-variant">Manual Effort</span>
+</div>
+</div>
+</section>
+<!-- Features Bento Grid -->
+<section class="py-xl">
+<div class="max-w-container-max mx-auto px-md">
+<div class="mb-xl text-center max-w-2xl mx-auto">
+<h2 class="font-headline-lg text-headline-lg text-on-surface mb-sm">Unrivaled Pipeline Intelligence</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Our multi-agent system mimics the workflow of a senior site reliability engineer, but operates at the speed of silicon.</p>
+</div>
+<div class="bento-grid">
+<!-- Feature 1: Log Parsing -->
+<div class="col-span-12 md:col-span-8 glass-card p-xl rounded-lg group">
+<div class="flex flex-col md:flex-row gap-lg items-center">
+<div class="flex-1 space-y-md">
+<div class="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">terminal</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface">Intelligent Log Parsing</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">
+                                    We don't just grep. Our parser understands structured formats, identifies timestamps, correlates multi-process execution, and strips out noise to find the needle in the haystack.
+                                </p>
+</div>
+<div class="flex-1 w-full bg-surface-container rounded-lg p-sm border border-white/5 overflow-hidden">
+<div class="font-code-sm text-code-sm text-tertiary-fixed mb-xs">$ analyzing_job_284...</div>
+<div class="font-code-sm text-code-sm text-on-surface-variant opacity-60">Step 4: npm install ... [OK]</div>
+<div class="font-code-sm text-code-sm text-on-surface-variant opacity-60">Step 5: npm test ...</div>
+<div class="font-code-sm text-code-sm text-error bg-error/10 px-2 rounded mt-xs">Error: Connection refused (127.0.0.1:5432)</div>
+<div class="font-code-sm text-code-sm text-primary mt-xs">Agent Action: Checking database container logs...</div>
+</div>
+</div>
+</div>
+<!-- Feature 2: AI Classification -->
+<div class="col-span-12 md:col-span-4 glass-card p-xl rounded-lg">
+<div class="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-md">
+<span class="material-symbols-outlined">category</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-sm">AI Classification</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">
+                            Instantly categorize failures into Infrastructure, Network, Code, or Flaky tests using our fine-tuned proprietary models.
+                        </p>
+</div>
+<!-- Feature 3: Agentic Planning -->
+<div class="col-span-12 md:col-span-4 glass-card p-xl rounded-lg">
+<div class="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-md">
+<span class="material-symbols-outlined">psychology_alt</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-sm">Agentic Planning</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">
+                            Agents dynamically create a search strategy based on the initial failure signature, pivoting as new evidence is uncovered.
+                        </p>
+</div>
+<!-- Feature 4: Semantic Retrieval & Vector Search -->
+<div class="col-span-12 md:col-span-8 glass-card p-xl rounded-lg">
+<div class="flex flex-col md:flex-row gap-lg">
+<div class="flex-1">
+<div class="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-md">
+<span class="material-symbols-outlined">manage_search</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-sm">Semantic Retrieval</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">
+                                    Our Vector DB indexes your entire documentation, past PRs, and resolved issues to find similar patterns and historical solutions in milliseconds.
+                                </p>
+</div>
+<div class="flex-1 grid grid-cols-2 gap-sm">
+<div class="bg-surface-container rounded-lg p-sm border border-white/5 flex flex-col items-center justify-center gap-xs">
+<span class="text-primary text-[32px] material-symbols-outlined">hub</span>
+<span class="text-label-caps font-label-caps">Knowledge Graph</span>
+</div>
+<div class="bg-surface-container rounded-lg p-sm border border-white/5 flex flex-col items-center justify-center gap-xs">
+<span class="text-secondary text-[32px] material-symbols-outlined">grid_view</span>
+<span class="text-label-caps font-label-caps">Embeddings</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- CTA Section -->
+<section class="py-xl">
+<div class="max-w-container-max mx-auto px-md">
+<div class="relative overflow-hidden glass-card rounded-lg p-xl text-center flex flex-col items-center gap-md">
+<div class="absolute inset-0 bg-gradient-to-tr from-primary/10 via-transparent to-secondary/10"></div>
+<h2 class="relative font-display-lg text-display-lg text-on-surface">Ready to fix pipelines faster?</h2>
+<p class="relative font-body-lg text-body-lg text-on-surface-variant max-w-xl">
+                        Join 500+ engineering teams who have automated their CI failure triage. Start your 14-day free trial today.
+                    </p>
+<div class="relative flex flex-wrap justify-center gap-sm mt-sm">
+<button class="bg-primary text-on-primary font-bold py-4 px-10 rounded-full glow-primary active:scale-95 transition-all">
+                            Get Started Now
+                        </button>
+<button class="bg-surface-container-high border border-outline-variant text-on-surface font-bold py-4 px-10 rounded-full hover:bg-surface-bright transition-all">
+                            Talk to Sales
+                        </button>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="bg-surface-dim border-t border-white/5">
+<div class="flex flex-col md:flex-row justify-between items-center py-lg px-md max-w-container-max mx-auto">
+<div class="flex flex-col gap-xs mb-md md:mb-0">
+<span class="font-headline-sm text-headline-sm text-on-surface font-bold">CI Debug Agent</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Â© 2024 CI Debug Agent. All rights reserved.</span>
+</div>
+<div class="flex gap-lg">
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Documentation</a>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Privacy Policy</a>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Status</a>
+</div>
+<div class="flex gap-sm mt-md md:mt-0">
+<a class="opacity-80 hover:opacity-100 transition-opacity" href="#">
+<svg class="w-6 h-6 fill-on-surface-variant" viewbox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"></path></svg>
+</a>
+</div>
+</div>
+</footer>
+<script>
+        // Micro-interactions for glass cards
+        document.querySelectorAll('.glass-card').forEach(card => {
+            card.addEventListener('mousemove', e => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                card.style.setProperty('--mouse-x', `${x}px`);
+                card.style.setProperty('--mouse-y', `${y}px`);
+            });
+        });
+
+        // Simple visibility observer for scroll animations
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('opacity-100', 'translate-y-0');
+                    entry.target.classList.remove('opacity-0', 'translate-y-8');
+                }
+            });
+        }, { threshold: 0.1 });
+
+        document.querySelectorAll('.bento-grid > div').forEach(item => {
+            item.classList.add('transition-all', 'duration-700', 'opacity-0', 'translate-y-8');
+            observer.observe(item);
+        });
+    </script>
+</body></html>
