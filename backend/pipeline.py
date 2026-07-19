@@ -211,10 +211,13 @@ class PipelineOrchestrator:
         self._execute_stage("Vector Store", build_and_save_index, embedded_chunks)
 
         # STEP 8: Retrieve Top-K documents
+        query = parsed_log.error_message
+        if not query or not query.strip():
+            query = f"{parsed_log.error_type or 'execution failure'} in {parsed_log.file_name or 'pipeline log'}"
         retrieved_documents = self._execute_stage(
             "Retriever", 
             self.retriever.retrieve,
-            query=parsed_log.error_message,
+            query=query,
             top_k=plan.top_k
         )
         logger.info(f"Retrieved {len(retrieved_documents)} documents.")
