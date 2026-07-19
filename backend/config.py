@@ -21,3 +21,7 @@ LOGS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
 
 # Ensure logs directory exists
 os.makedirs(LOGS_DIR, exist_ok=True)
+
+# Gemini API Configuration
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")

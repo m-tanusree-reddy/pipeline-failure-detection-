@@ -10,7 +10,7 @@ import logging
 import time
 from typing import Type, TypeVar, List, Dict, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from google import genai
 from google.genai import types
 
@@ -19,14 +19,6 @@ from config import GEMINI_API_KEY, GEMINI_MODEL
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
-
-
-class AnalysisResult(BaseModel):
-    root_cause: str = Field(..., description="A concise summary of the determined root cause.")
-    confidence: int = Field(..., ge=0, le=100, description="Confidence score from 0 to 100.")
-    explanation: str = Field(..., description="Detailed explanation grounded in evidence.")
-    suggested_fixes: List[str] = Field(..., description="Actionable fixes to resolve the failure.")
-    supporting_documents: List[int] = Field(..., description="1-based indices of supporting documents.")
 
 # ── Model Filtering ───────────────────────────────────────────────
 # Model name substrings that identify non-text-generation models.
@@ -263,53 +255,3 @@ class LLMService:
 
         logger.error(f"All models in chain exhausted. Last error: {last_error}")
         raise last_error
-
-    def analyze_failure(self, pipeline_error: str, retrieved_documents: List[Any]) -> AnalysisResult:
-        """Compatibility API for retrieval pipeline modules."""
-        evidence_lines: List[str] = []
-        for i, doc in enumerate(retrieved_documents, 1):
-            chunk = getattr(doc, "chunk", None)
-            source = getattr(chunk, "source", "Unknown")
-            content = getattr(chunk, "content", "")
-            evidence_lines.append(f"Document {i} | Source: {source}\n{content}")
-
-        system_prompt = (
-            "You are an expert DevOps engineer.\n"
-            "Analyze the CI/CD pipeline failure using ONLY the provided evidence.\n"
-            "Return strict JSON matching the schema."
-        )
-        user_prompt = (
-            f"Pipeline Error:\n{pipeline_error}\n\n"
-            f"Relevant Evidence:\n{'\n\n'.join(evidence_lines) if evidence_lines else 'No retrieved evidence.'}\n\n"
-            "Return:\n"
-            "1) root_cause\n2) confidence (0-100)\n3) explanation\n4) suggested_fixes\n5) supporting_documents"
-        )
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
-
-        try:
-            result = self.get_structured_completion(
-                messages=messages,
-                response_model=AnalysisResult,
-                temperature=0.1,
-            )
-            result.confidence = max(0, min(100, result.confidence))
-            return result
-        except Exception as e:
-            logger.error(f"Failed to analyze failure via LLMService: {e}")
-            return self._create_fallback_result(str(e))
-
-    @staticmethod
-    def _create_fallback_result(error_message: str) -> AnalysisResult:
-        return AnalysisResult(
-            root_cause="Unknown root cause due to generation error.",
-            confidence=0,
-            explanation=f"Failed to analyze the pipeline error because of: {error_message}",
-            suggested_fixes=[
-                "Check the LLM service configuration and API key.",
-                "Verify Gemini API availability and quota.",
-            ],
-            supporting_documents=[],
-        )
