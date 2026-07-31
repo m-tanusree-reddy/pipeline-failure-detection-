@@ -49,3 +49,5 @@ backend/logs/
 backend/vector_db/
 *.zip
 !backend/sample_logs/*.zip
+*.pdf
+

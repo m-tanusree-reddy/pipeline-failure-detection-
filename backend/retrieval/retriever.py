@@ -51,13 +51,18 @@ class Retriever:
             self.vector_store.load_metadata(self.metadata_filename)
             
             if self.vector_store.index is None or not self.vector_store.metadata_mapping:
-                raise ValueError("Vector store or metadata is empty after loading.")
+                logger.warning("Vector store or metadata is empty after loading. Retrieval will return empty results.")
+                self.is_loaded = False
+                return
                 
             self.is_loaded = True
             logger.info("Vector store loaded successfully.")
+        except FileNotFoundError:
+            logger.warning(f"Vector store index '{self.index_filename}' not found. Retrieval will return empty results.")
+            self.is_loaded = False
         except Exception as e:
             logger.error(f"Failed to load vector store: {e}")
-            raise
+            self.is_loaded = False
 
     def embed_query(self, query: str) -> np.ndarray:
         """
@@ -113,6 +118,9 @@ class Retriever:
             
         # Ensure resources are loaded
         self.load_vector_store()
+        if not self.is_loaded:
+            logger.warning("Vector store is not loaded or missing. Returning empty results.")
+            return []
         
         start_time = time.time()
         
@@ -154,40 +162,42 @@ class Retriever:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     
-    # 1. Create Sample Chunks
+    # 1. Create Sample Chunks simulating multiple sources to test semantic matching
     samples = [
         Chunk(
-            chunk_id="chunk_1",
-            document_id="doc_1",
-            source="stackoverflow",
-            title="ImportError Resolution",
-            content="If you get No module named requests, you must run pip install requests.",
-            url="https://stackoverflow.com/a/1",
-            metadata={"votes": 50},
-            chunk_index=1,
-            total_chunks=1
+            chunk_id="chunk_req_docs", document_id="doc_req", source="python_docs", title="requests Docs",
+            content="The requests module in Python allows you to send HTTP requests easily.", url="https://docs.python.org/requests",
+            metadata={"module": "requests"}, chunk_index=1, total_chunks=1
         ),
         Chunk(
-            chunk_id="chunk_2",
-            document_id="doc_2",
-            source="github_actions_docs",
-            title="Exit Codes",
-            content="When a step fails, GitHub Actions returns exit code 1. This stops the workflow.",
-            url="https://docs.github.com/actions",
-            metadata={"topic": "workflows"},
-            chunk_index=1,
-            total_chunks=1
+            chunk_id="chunk_pypi", document_id="doc_pypi", source="pypi", title="requests Package",
+            content="PyPI package for requests. To install, run pip install requests.", url="https://pypi.org/project/requests/",
+            metadata={"version": "2.31.0"}, chunk_index=1, total_chunks=1
         ),
         Chunk(
-            chunk_id="chunk_3",
-            document_id="doc_3",
-            source="github_issues",
-            title="Package not found",
-            content="Dependency installation failed because the package doesn't exist on PyPI.",
-            url="https://github.com/issues/5",
-            metadata={"status": "open"},
-            chunk_index=1,
-            total_chunks=1
+            chunk_id="chunk_so_req", document_id="doc_so1", source="stackoverflow", title="ModuleNotFoundError requests",
+            content="If you get ModuleNotFoundError: No module named requests, you haven't installed the package in your virtualenv.", url="https://so.com/q/1",
+            metadata={"votes": 120}, chunk_index=1, total_chunks=1
+        ),
+        Chunk(
+            chunk_id="chunk_npm_gh", document_id="doc_npm1", source="github_issues", title="npm install fails in CI",
+            content="My GitHub Actions workflow fails on npm install with a network timeout error.", url="https://github.com/issues/npm",
+            metadata={"status": "open"}, chunk_index=1, total_chunks=1
+        ),
+        Chunk(
+            chunk_id="chunk_npm_so", document_id="doc_npm2", source="stackoverflow", title="npm install ERESOLVE",
+            content="NPM install failure due to ERESOLVE unable to resolve dependency tree.", url="https://so.com/q/2",
+            metadata={"votes": 45}, chunk_index=1, total_chunks=1
+        ),
+        Chunk(
+            chunk_id="chunk_cache_docs", document_id="doc_cache1", source="github_actions_docs", title="actions/cache",
+            content="The actions/cache action allows caching dependencies to speed up workflows.", url="https://docs.github.com/en/actions/using-workflows/caching",
+            metadata={"topic": "cache"}, chunk_index=1, total_chunks=1
+        ),
+        Chunk(
+            chunk_id="chunk_cache_gh", document_id="doc_cache2", source="github_issues", title="actions/cache not restoring",
+            content="My actions/cache step doesn't restore the npm cache properly across different runners.", url="https://github.com/issues/cache",
+            metadata={"status": "closed"}, chunk_index=1, total_chunks=1
         )
     ]
     
@@ -197,35 +207,31 @@ if __name__ == "__main__":
     
     store = VectorStore()
     store.build_index(embedded_samples)
-    store.save_index()
-    store.save_metadata()
+    store.save_index("test_vector_store.faiss")
+    store.save_metadata("test_metadata.pkl")
     
     print("\n--- Testing Retriever ---")
-    retriever = Retriever()
+    retriever = Retriever(index_filename="test_vector_store.faiss", metadata_filename="test_metadata.pkl")
     
     test_queries = [
-        "No module named requests",
-        "GitHub Actions exit code 1",
-        "Dependency installation failed"
+        "ModuleNotFoundError requests",
+        "npm install failure",
+        "actions/cache"
     ]
     
     for query in test_queries:
         print("===================================================")
-        print("Query")
-        print(query)
+        print("Query:", query)
         print("\nTop Results\n")
         
-        results = retriever.retrieve(query, top_k=2)
+        results = retriever.retrieve(query, top_k=3)
         
         for res in results:
-            print(f"Rank {res.rank}")
-            print(f"Score: {res.score:.4f}")
-            print(f"Chunk ID: {res.chunk.chunk_id}")
-            print(f"Source: {res.chunk.source}")
+            print(f"Rank {res.rank} | Score: {res.score:.4f} | Source: {res.chunk.source}")
             print(f"Title: {res.chunk.title}")
-            
-            preview = res.chunk.content[:100] + "..." if len(res.chunk.content) > 100 else res.chunk.content
-            print(f"Content Preview: {preview}")
+            print(f"Metadata: {res.chunk.metadata}")
+            preview = res.chunk.content[:80] + "..." if len(res.chunk.content) > 80 else res.chunk.content
+            print(f"Preview: {preview}")
             print("------------------------")
             
         print("===================================================\n")

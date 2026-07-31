@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import './App.css'
 
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+
 interface LogFile {
   id: string
   name: string
@@ -71,7 +73,7 @@ function App() {
     if (isAnalyzing && activeRunId) {
       intervalId = setInterval(async () => {
         try {
-          const res = await fetch(`/api/runs/${activeRunId}`)
+          const res = await fetch(`${API_BASE}/api/runs/${activeRunId}`)
           if (!res.ok) throw new Error('Failed to fetch run status')
           const data: RunData = await res.json()
           setRunData(data)
@@ -98,7 +100,7 @@ function App() {
 
   const fetchLogs = async () => {
     try {
-      const res = await fetch('/api/logs')
+      const res = await fetch(`${API_BASE}/api/logs`)
       if (res.ok) {
         const data = await res.json()
         setLogs(data)
@@ -128,7 +130,7 @@ function App() {
 
     setIsUploading(true)
     try {
-      const res = await fetch('/api/upload', {
+      const res = await fetch(`${API_BASE}/api/upload`, {
         method: 'POST',
         body: formData,
       })
@@ -151,7 +153,7 @@ function App() {
     setRunData(null)
     
     try {
-      const res = await fetch('/api/analyze', {
+      const res = await fetch(`${API_BASE}/api/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ log_id: logId })
@@ -161,7 +163,7 @@ function App() {
       setActiveRunId(data.run_id)
       
       // Fetch initial status
-      const runStatusRes = await fetch(`/api/runs/${data.run_id}`)
+      const runStatusRes = await fetch(`${API_BASE}/api/runs/${data.run_id}`)
       if (runStatusRes.ok) {
         setRunData(await runStatusRes.json())
       }
@@ -174,7 +176,7 @@ function App() {
   const executeFix = async () => {
     if (!activeRunId) return
     try {
-      const res = await fetch('/api/fix', {
+      const res = await fetch(`${API_BASE}/api/fix`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ run_id: activeRunId, fix_index: 0 })
