@@ -13,8 +13,9 @@ import pprint
 # Run from project root: python backend/test_e2e_pipeline.py
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
-from agents.planner import PlannerAgent
-from tools.tool_runner import ToolRunner
+from backend.agents.planner import PlannerAgent
+from backend.tools.tool_runner import ToolRunner
+
 
 # Simulated classification result (as produced by the classifier)
 CLASSIFICATION = {

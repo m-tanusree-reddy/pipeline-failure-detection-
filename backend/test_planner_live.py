@@ -1,4 +1,5 @@
-from agents.planner import PlannerAgent
+from backend.agents.planner import PlannerAgent
+
 
 classification = {
     "category": "ImportError",

@@ -4,8 +4,9 @@ import os
 # Ensure backend directory is in path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from config import GEMINI_API_KEY
-from agents.planner import PlannerAgent
+from backend.config import GEMINI_API_KEY
+from backend.agents.planner import PlannerAgent
+
 
 def main():
     print("Testing Planner Agent against real Gemini API...")

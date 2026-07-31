@@ -1,8 +1,11 @@
 import logging
 from typing import Dict, Any, List
 from pydantic import BaseModel, Field
-from models.planner_models import PlannerOutput, InvestigationStep
-from services.llm_service import LLMService
+from backend.models.planner_models import PlannerOutput, InvestigationStep
+from backend.services.llm_service import LLMService
+
+
+
 
 logger = logging.getLogger(__name__)
 

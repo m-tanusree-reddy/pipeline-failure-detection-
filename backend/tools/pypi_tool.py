@@ -12,7 +12,8 @@ import urllib.error
 import json
 from typing import Dict, Any, List
 
-from tools.base_tool import BaseTool
+from backend.tools.base_tool import BaseTool
+
 
 logger = logging.getLogger(__name__)
 

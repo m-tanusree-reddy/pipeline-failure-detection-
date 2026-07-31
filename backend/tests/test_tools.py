@@ -11,12 +11,13 @@ import tempfile
 # Ensure backend/ is in the path when run from project root
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tools.configuration_inspector import ConfigurationInspector
-from tools.git_history import GitHistory
-from tools.workflow_history import WorkflowHistory
-from tools.pypi_tool import PyPI
-from tools.tool_runner import ToolRunner
-from models.planner_models import PlannerOutput, InvestigationStep
+from backend.tools.configuration_inspector import ConfigurationInspector
+from backend.tools.git_history import GitHistory
+from backend.tools.workflow_history import WorkflowHistory
+from backend.tools.pypi_tool import PyPI
+from backend.tools.tool_runner import ToolRunner
+from backend.models.planner_models import PlannerOutput, InvestigationStep
+
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +85,7 @@ class TestConfigurationInspector(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestGitHistory(unittest.TestCase):
 
-    @patch("tools.git_history.subprocess.run")
+    @patch("backend.tools.git_history.subprocess.run")
     def test_commits_found(self, mock_run):
         """Should parse and return commit info from git log output."""
         mock_run.return_value = MagicMock(
@@ -99,7 +100,7 @@ class TestGitHistory(unittest.TestCase):
         self.assertEqual(result["status"], "success")
         self.assertTrue(any("abc12345" in e for e in result["evidence"]))
 
-    @patch("tools.git_history.subprocess.run")
+    @patch("backend.tools.git_history.subprocess.run")
     def test_no_commits(self, mock_run):
         """Should return not_found when git log is empty."""
         mock_run.return_value = MagicMock(stdout="", returncode=0)
@@ -107,7 +108,7 @@ class TestGitHistory(unittest.TestCase):
         result = tool.run(FLASK_CONTEXT)
         self.assertEqual(result["status"], "not_found")
 
-    @patch("tools.git_history.subprocess.run", side_effect=FileNotFoundError("git not found"))
+    @patch("backend.tools.git_history.subprocess.run", side_effect=FileNotFoundError("git not found"))
     def test_git_not_available(self, mock_run):
         """Should return not_found gracefully when git is unavailable."""
         tool = GitHistory()
@@ -148,7 +149,7 @@ class TestWorkflowHistory(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestPyPI(unittest.TestCase):
 
-    @patch("tools.pypi_tool.urllib.request.urlopen")
+    @patch("backend.tools.pypi_tool.urllib.request.urlopen")
     def test_package_found(self, mock_urlopen):
         """Should return package info when PyPI responds 200."""
         mock_resp = MagicMock()
@@ -164,7 +165,7 @@ class TestPyPI(unittest.TestCase):
         self.assertEqual(result["status"], "success")
         self.assertTrue(any("3.0.5" in e for e in result["evidence"]))
 
-    @patch("tools.pypi_tool.urllib.request.urlopen", side_effect=Exception("Network error"))
+    @patch("backend.tools.pypi_tool.urllib.request.urlopen", side_effect=Exception("Network error"))
     def test_network_error(self, _):
         """Should return not_found gracefully on network error."""
         tool = PyPI()
@@ -191,8 +192,8 @@ class TestToolRunner(unittest.TestCase):
         """Results should be ordered by tool priority."""
         plan = self._make_plan(["PyPI", "ConfigurationInspector"])
 
-        with patch("tools.pypi_tool.PyPI.run", return_value={"tool": "PyPI", "status": "success", "evidence": [], "raw": None}), \
-             patch("tools.configuration_inspector.ConfigurationInspector.run", return_value={"tool": "ConfigurationInspector", "status": "success", "evidence": [], "raw": None}):
+        with patch("backend.tools.pypi_tool.PyPI.run", return_value={"tool": "PyPI", "status": "success", "evidence": [], "raw": None}), \
+             patch("backend.tools.configuration_inspector.ConfigurationInspector.run", return_value={"tool": "ConfigurationInspector", "status": "success", "evidence": [], "raw": None}):
 
             runner = ToolRunner()
             results = runner.run(plan, FLASK_CONTEXT)
@@ -213,7 +214,7 @@ class TestToolRunner(unittest.TestCase):
     def test_tool_exception_is_caught(self):
         """A tool that raises an exception should not crash the runner."""
         plan = self._make_plan(["GitHistory"])
-        with patch("tools.git_history.GitHistory.run", side_effect=RuntimeError("crash")):
+        with patch("backend.tools.git_history.GitHistory.run", side_effect=RuntimeError("crash")):
             runner = ToolRunner()
             results = runner.run(plan, FLASK_CONTEXT)
         self.assertEqual(results[0]["status"], "error")

@@ -6,8 +6,9 @@ from unittest.mock import MagicMock
 # Ensure backend directory is in path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from models.planner_models import PlannerOutput, InvestigationStep
-from agents.planner import PlannerAgent
+from backend.models.planner_models import PlannerOutput, InvestigationStep
+from backend.agents.planner import PlannerAgent
+
 
 class TestPlannerAgent(unittest.TestCase):
     def test_generate_plan_success(self):
