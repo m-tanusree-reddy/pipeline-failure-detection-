@@ -25,3 +25,7 @@ os.makedirs(LOGS_DIR, exist_ok=True)
 # Gemini API Configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+
+# Allowed CORS Origins (comma separated list, defaults to ["*"])
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+

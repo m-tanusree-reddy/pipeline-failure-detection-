@@ -13,7 +13,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from backend.config import LOGS_DIR
+from backend.config import LOGS_DIR, ALLOWED_ORIGINS
 from backend.pipeline import PipelineOrchestrator
 
 app = FastAPI(title="Nexus.ai CI Debug Agent API")
@@ -21,11 +21,19 @@ app = FastAPI(title="Nexus.ai CI Debug Agent API")
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/health")
+def health_check():
+    """
+    Endpoint for Render deployment verification and health checks.
+    """
+    return {"status": "healthy"}
+
 
 # Global in-memory store for analysis runs
 runs: Dict[str, Dict[str, Any]] = {}
