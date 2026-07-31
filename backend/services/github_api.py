@@ -1,7 +1,8 @@
 import requests
 from typing import Optional
-from config import GITHUB_TOKEN, GITHUB_API_URL, TIMEOUT
-from models.github import WorkflowRun, WorkflowRunsResponse
+from backend.config import GITHUB_TOKEN, GITHUB_API_URL, TIMEOUT
+from backend.models.github import WorkflowRun, WorkflowRunsResponse
+
 
 class GitHubAPI:
     """

@@ -8,7 +8,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dotenv import load_dotenv
 load_dotenv()
 
-from services.llm_service import LLMService, AnalysisResult
+from backend.services.llm_service import LLMService, AnalysisResult
+
 
 # Simulate a realistic pipeline error and retrieved evidence
 FAKE_ERROR = (

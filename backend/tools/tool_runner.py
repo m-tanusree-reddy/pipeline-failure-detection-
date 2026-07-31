@@ -7,12 +7,13 @@ each recommended tool in priority order, collecting structured evidence.
 import logging
 from typing import Dict, Any, List
 
-from models.planner_models import PlannerOutput
-from tools.base_tool import BaseTool
-from tools.configuration_inspector import ConfigurationInspector
-from tools.git_history import GitHistory
-from tools.workflow_history import WorkflowHistory
-from tools.pypi_tool import PyPI
+from backend.models.planner_models import PlannerOutput
+from backend.tools.base_tool import BaseTool
+from backend.tools.configuration_inspector import ConfigurationInspector
+from backend.tools.git_history import GitHistory
+from backend.tools.workflow_history import WorkflowHistory
+from backend.tools.pypi_tool import PyPI
+
 
 logger = logging.getLogger(__name__)
 

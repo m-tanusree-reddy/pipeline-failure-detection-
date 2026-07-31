@@ -1,7 +1,7 @@
 import os
 import sys
-from config import LOGS_DIR
-from services.github_api import GitHubAPI
+from backend.config import LOGS_DIR
+from backend.services.github_api import GitHubAPI
 
 def main():
     owner = "microsoft"

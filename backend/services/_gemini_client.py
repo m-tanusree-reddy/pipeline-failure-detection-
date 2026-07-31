@@ -14,7 +14,8 @@ from pydantic import BaseModel
 from google import genai
 from google.genai import types
 
-from config import GEMINI_API_KEY, GEMINI_MODEL
+from backend.config import GEMINI_API_KEY, GEMINI_MODEL
+
 
 logger = logging.getLogger(__name__)
 
