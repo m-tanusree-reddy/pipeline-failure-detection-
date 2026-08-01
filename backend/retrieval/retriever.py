@@ -35,7 +35,6 @@ class Retriever:
         self.metadata_filename = metadata_filename
         self.vector_store = VectorStore()
         self.embedder = Embedder()
-        self.embedder.load_model()
         self.is_loaded = False
 
     def load_vector_store(self) -> None:

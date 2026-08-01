@@ -111,7 +111,7 @@ class PipelineOrchestrator:
 
     def __init__(self):
         """
-        Initializes and links all modules.
+        Initializes and links all modules lazily.
         """
         # Function-based wrappers
         self.log_parser = LogParser()
@@ -120,31 +120,86 @@ class PipelineOrchestrator:
         self.collector = Collector()
         self.chunker = Chunker()
 
-        # Class-based instances
-        self.embedder = Embedder()
-        # Map expected method name 'embed' to 'embed_chunks'
-        self.embedder.embed = self.embedder.embed_chunks
-
-        self.vector_store = VectorStore()
-        # Map expected method name 'build' to 'build_index'
-        self.vector_store.build = self.vector_store.build_index
-
-        self.retriever = Retriever()
-
-        self.llm_service = LLMService()
-        # Map expected method name 'analyze' to 'analyze_failure'
-        self.llm_service.analyze = self.llm_service.analyze_failure
-
-        self.critic = CriticAgent()
-        # Map expected method name 'review' to 'evaluate'
-        self.critic.review = self.critic.evaluate
-
-        self.report_generator = ReportGenerator()
-        # Map expected method name 'generate' to 'generate_report'
-        self.report_generator.generate = self.report_generator.generate_report
+        # Class-based instances backing fields (lazy loaded)
+        self._embedder = None
+        self._vector_store = None
+        self._retriever = None
+        self._llm_service = None
+        self._critic = None
+        self._report_generator = None
 
         # Dict to track stage stats
         self.stage_stats: Dict[str, Dict[str, Any]] = {}
+
+    @property
+    def embedder(self):
+        if self._embedder is None:
+            emb = Embedder()
+            emb.embed = emb.embed_chunks
+            self._embedder = emb
+        return self._embedder
+
+    @embedder.setter
+    def embedder(self, value):
+        self._embedder = value
+
+    @property
+    def vector_store(self):
+        if self._vector_store is None:
+            vs = VectorStore()
+            vs.build = vs.build_index
+            self._vector_store = vs
+        return self._vector_store
+
+    @vector_store.setter
+    def vector_store(self, value):
+        self._vector_store = value
+
+    @property
+    def retriever(self):
+        if self._retriever is None:
+            self._retriever = Retriever()
+        return self._retriever
+
+    @retriever.setter
+    def retriever(self, value):
+        self._retriever = value
+
+    @property
+    def llm_service(self):
+        if self._llm_service is None:
+            llm = LLMService()
+            llm.analyze = llm.analyze_failure
+            self._llm_service = llm
+        return self._llm_service
+
+    @llm_service.setter
+    def llm_service(self, value):
+        self._llm_service = value
+
+    @property
+    def critic(self):
+        if self._critic is None:
+            crt = CriticAgent()
+            crt.review = crt.evaluate
+            self._critic = crt
+        return self._critic
+
+    @critic.setter
+    def critic(self, value):
+        self._critic = value
+
+    @property
+    def report_generator(self):
+        if self._report_generator is None:
+            rg = ReportGenerator()
+            rg.generate = rg.generate_report
+            self._report_generator = rg
+        return self._report_generator
+
+    @report_generator.setter
+    def report_generator(self, value):
+        self._report_generator = value
 
     def _execute_stage(self, stage_name: str, func, *args, **kwargs) -> Any:
         """

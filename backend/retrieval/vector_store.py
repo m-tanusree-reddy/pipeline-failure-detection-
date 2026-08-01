@@ -4,10 +4,16 @@ from pathlib import Path
 from typing import List, Dict, Optional
 import numpy as np
 
-try:
-    import faiss
-except ImportError:
-    faiss = None
+def _get_faiss():
+    """
+    Lazy loader helper for faiss.
+    Defers loading faiss library until vector store index operations are invoked.
+    """
+    try:
+        import faiss
+        return faiss
+    except ImportError:
+        raise ImportError("faiss package is not installed. Please install faiss-cpu to use VectorStore.")
 
 # Fallback models in case the previous modules can't be imported during isolation testing
 try:
@@ -75,7 +81,8 @@ class VectorStore:
         vectors = np.array([ec.embedding for ec in embedded_chunks], dtype=np.float32)
         
         # Initialize FAISS index
-        self.index = faiss.IndexFlatL2(first_dim)
+        faiss_lib = _get_faiss()
+        self.index = faiss_lib.IndexFlatL2(first_dim)
         
         # Add vectors to index
         self.index.add(vectors)
@@ -99,7 +106,7 @@ class VectorStore:
         path = VECTOR_DB_DIR / filename
         
         logger.info(f"Saving index to {path}...")
-        faiss.write_index(self.index, str(path))
+        _get_faiss().write_index(self.index, str(path))
         logger.info("Index saved successfully.")
 
     def load_index(self, filename: str = "vector_store.faiss") -> None:
@@ -114,7 +121,7 @@ class VectorStore:
             raise FileNotFoundError(f"FAISS index file not found: {path}")
             
         logger.info(f"Loading index from {path}...")
-        self.index = faiss.read_index(str(path))
+        self.index = _get_faiss().read_index(str(path))
         logger.info("Index loaded successfully.")
 
     def save_metadata(self, filename: str = "metadata.pkl") -> None:

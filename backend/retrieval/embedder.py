@@ -4,13 +4,27 @@ import numpy as np
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
-# Ensure torch is imported but specify CPU for efficiency on laptops
-try:
-    import torch
-    from sentence_transformers import SentenceTransformer
-except ImportError:
-    torch = None
-    SentenceTransformer = None
+logger = logging.getLogger(__name__)
+
+_MODEL_CACHE = {}
+
+def _get_sentence_transformer(model_name: str):
+    """
+    Lazy singleton helper to load and cache SentenceTransformer models on CPU.
+    Defers importing heavy ML packages (torch, sentence_transformers) until called.
+    """
+    if model_name not in _MODEL_CACHE:
+        try:
+            import torch
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            raise ImportError("sentence-transformers library is not installed. Please install it to use the Embedder.")
+
+        logger.info(f"Loading embedding model: {model_name} on CPU...")
+        start_time = time.time()
+        _MODEL_CACHE[model_name] = SentenceTransformer(model_name, device="cpu")
+        logger.info(f"Model loaded successfully in {time.time() - start_time:.2f} seconds.")
+    return _MODEL_CACHE[model_name]
 
 try:
     from backend.retrieval.chunker import Chunk
@@ -26,8 +40,6 @@ except ImportError:
         metadata: dict
         chunk_index: int
         total_chunks: int
-
-logger = logging.getLogger(__name__)
 
 class EmbeddedChunk(BaseModel):
     """
@@ -54,16 +66,7 @@ class Embedder:
         if self.model is not None:
             return
             
-        if SentenceTransformer is None:
-            raise ImportError("sentence-transformers library is not installed. Please install it to use the Embedder.")
-
-        logger.info(f"Loading embedding model: {self.model_name} on CPU...")
-        start_time = time.time()
-        
-        # We specify device='cpu' to optimize for a standard 8GB RAM laptop without relying on GPU
-        self.model = SentenceTransformer(self.model_name, device="cpu")
-        
-        logger.info(f"Model loaded successfully in {time.time() - start_time:.2f} seconds.")
+        self.model = _get_sentence_transformer(self.model_name)
 
     def embed_chunk(self, chunk: Chunk) -> Optional[EmbeddedChunk]:
         """
