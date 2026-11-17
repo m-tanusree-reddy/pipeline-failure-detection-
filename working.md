@@ -436,3 +436,19 @@ Built the full `backend/tools/` package with 4 tools and an orchestrator:
   - Prometheus metrics OpenMetrics exposition.
 - **All 30 tests across Milestones 1 through 6 pass with 100% success rate** (`pytest backend/tests/test_v2_milestones.py backend/tests/test_v3_notifications.py backend/tests/test_v4_production_backend.py backend/tests/test_v5_v6_milestones.py -v`).
 - React frontend compiled and built in **247ms with 0 errors** (`tsc -b && vite build`).
+
+## Day 13 Feature Branching Architecture & GitHub Remote Publication
+
+### 1. Feature Branch Strategy
+To follow enterprise Trunk-Based & Feature Branch workflows rather than pushing all commits directly to `main`, created dedicated milestone and feature branches:
+- **`feature/notification-engine`:** Milestone 3 implementation (Role-based routing, In-app alerts, alert deduplication, historical failure similarity).
+- **`feature/production-backend-celery`:** Milestone 4 implementation (Celery workers, Redis queue, Postgres connection pool tuning, Alembic migrations, Docker deployment).
+- **`feature/ai-intelligence-remediation`:** Milestone 5 implementation (Granular archetypes, composite severity scoring, unified Git diff patch synthesis, human review workflows).
+- **`feature/observability-sentry-metrics`:** Milestone 6 implementation (Prometheus metrics, Grafana dashboards, Sentry SDK, GitHub Actions CI/CD).
+- **`feature/ui-ux-oauth-system`:** Professional UI/UX overhaul, GitHub OAuth login flow, and user session management.
+- **`release/v3.0.0`:** Production release candidate branch tracking the complete 3.0 platform.
+
+### 2. Upstream Synchronization
+- All branches pushed directly to `origin` on GitHub repository `https://github.com/m-tanusree-reddy/pipeline-failure-detection-.git`.
+- Documented the branch taxonomy and PR workflow in `README.md`.
+- Active working branch switched to feature branch workflow.

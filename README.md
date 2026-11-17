@@ -184,11 +184,23 @@ flowchart LR
     F4 -.->|Merge Release| M4
 ```
 
-### Branch Taxonomy:
-- **`main`**: Production-ready, verified codebase. Direct pushes to `main` trigger automated builds.
-- **`feature/*`**: Isolated branches for specific capabilities (e.g. `feature/log-parser`, `feature/github-api`, `feature/dashboard-integration`).
-- **`changes-on-*` / `retrieval`**: Historical integration branches for retrieval planner and collector enhancements.
-- **Pull Request Protocol**: All feature work is validated against the test suite (`pytest`) and frontend compiler (`tsc -b && vite build`) before merging into `main`.
+### Branch Taxonomy & Active Milestone Branches:
+| Branch Name | Milestone Focus | Status on GitHub |
+| :--- | :--- | :--- |
+| **`main`** | Production Trunk | Protected, Verified & Active |
+| **`release/v3.0.0`** | Version 3.0.0 Final Release Candidate | Up to date with `main` |
+| **`feature/ui-ux-oauth-system`** | UI/UX redesign, GitHub OAuth Login, and User Session Management | Live on GitHub |
+| **`feature/observability-sentry-metrics`** | Milestone 6 (Prometheus metrics, Grafana dashboards, Sentry SDK, CI/CD) | Live on GitHub |
+| **`feature/ai-intelligence-remediation`** | Milestone 5 (Granular archetypes, severity scoring, Git diff patches, human review) | Live on GitHub |
+| **`feature/production-backend-celery`** | Milestone 4 (Celery workers, Redis queue, Postgres connection pool, Docker) | Live on GitHub |
+| **`feature/notification-engine`** | Milestone 3 (Role-based routing, alert deduplication, historical similarity) | Live on GitHub |
+| **`feature/*`** | Capability-specific developer branches | Validated via PRs |
+
+### Pull Request & CI/CD Protocol:
+1. Developers branch off `main` (or a release branch) using `feature/<milestone-or-capability>`.
+2. Commit feature code with descriptive conventional commit messages.
+3. Push to `origin feature/<branch-name>` on GitHub.
+4. Open a Pull Request targeting `main`. GitHub Actions CI (`.github/workflows/ci.yml`) executes the automated test suite (30 Pytest tests), Alembic migration verifications, and frontend TypeScript build before merge approval.
 
 ---
 
