@@ -4,6 +4,7 @@ import uuid
 import time
 import json
 import logging
+import requests
 from typing import Dict, Any, Optional, List
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Depends, Request, Header, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,7 +16,9 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from backend.config import LOGS_DIR, ALLOWED_ORIGINS
+from backend.config import (
+    LOGS_DIR, ALLOWED_ORIGINS, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITHUB_OAUTH_REDIRECT_URI
+)
 from backend.pipeline import PipelineOrchestrator
 from backend.db.session import init_db, get_db, SessionLocal, get_db_telemetry
 from backend.db.models import (
@@ -74,6 +77,14 @@ app.add_middleware(
 runs: Dict[str, Dict[str, Any]] = {}
 
 # Pydantic Schemas
+class TokenLoginRequest(BaseModel):
+    token: Optional[str] = None
+    username: Optional[str] = None
+
+class OAuthCallbackRequest(BaseModel):
+    code: str
+    state: Optional[str] = None
+
 class ConnectRepoRequest(BaseModel):
     url: str
     token: Optional[str] = None
@@ -367,9 +378,205 @@ def run_analysis_thread(run_id: str, log_path: str, db_run_id: Optional[str] = N
         logger.removeHandler(handler)
 
 @app.get("/health")
+@app.get("/api/health")
 def health_check():
     """Endpoint for deployment verification and health checks."""
     return {"status": "healthy", "version": "3.0.0"}
+
+# ==========================================
+# AUTHENTICATION & GITHUB OAUTH ENDPOINTS
+# ==========================================
+
+@app.get("/api/auth/github/url")
+def get_github_oauth_url():
+    """Generates GitHub OAuth authorization URL or reports configuration status."""
+    if not GITHUB_CLIENT_ID:
+        return {
+            "configured": False,
+            "message": "GitHub OAuth client ID not set. Configure GITHUB_CLIENT_ID in .env, or sign in via Personal Access Token / Demo mode.",
+            "url": None
+        }
+    
+    redirect_uri_param = f"&redirect_uri={GITHUB_OAUTH_REDIRECT_URI}" if GITHUB_OAUTH_REDIRECT_URI else ""
+    auth_url = f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&scope=repo,read:user,user:email{redirect_uri_param}"
+    return {
+        "configured": True,
+        "client_id": GITHUB_CLIENT_ID,
+        "url": auth_url
+    }
+
+@app.post("/api/auth/github/callback")
+def github_oauth_callback(req: OAuthCallbackRequest, db: Session = Depends(get_db)):
+    """Exchanges GitHub OAuth code for an access token and user profile."""
+    if not GITHUB_CLIENT_ID or not GITHUB_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=400,
+            detail="GitHub OAuth credentials (GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET) are not configured on the server."
+        )
+
+    token_url = "https://github.com/login/oauth/access_token"
+    token_headers = {"Accept": "application/json"}
+    token_payload = {
+        "client_id": GITHUB_CLIENT_ID,
+        "client_secret": GITHUB_CLIENT_SECRET,
+        "code": req.code
+    }
+    if GITHUB_OAUTH_REDIRECT_URI:
+        token_payload["redirect_uri"] = GITHUB_OAUTH_REDIRECT_URI
+
+    try:
+        resp = requests.post(token_url, json=token_payload, headers=token_headers, timeout=10)
+        resp_data = resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to communicate with GitHub OAuth endpoint: {str(e)}")
+
+    access_token = resp_data.get("access_token")
+    if not access_token:
+        error_desc = resp_data.get("error_description") or resp_data.get("error") or "Failed to obtain access token."
+        raise HTTPException(status_code=400, detail=error_desc)
+
+    try:
+        github_svc = GitHubService(access_token)
+        profile = github_svc.get_authenticated_user(access_token)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch user profile from GitHub: {str(e)}")
+
+    username = profile.get("login") or f"gh_{profile.get('id')}"
+    user = db.query(User).filter((User.github_id == str(profile.get("id"))) | (User.username == username)).first()
+    if not user:
+        user = User(
+            github_id=str(profile.get("id")),
+            username=username,
+            email=profile.get("email"),
+            avatar_url=profile.get("avatar_url"),
+            global_role="Admin" if db.query(User).count() == 0 else "Developer"
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    else:
+        if profile.get("avatar_url"): user.avatar_url = profile.get("avatar_url")
+        if profile.get("email"): user.email = profile.get("email")
+        db.commit()
+
+    return {
+        "status": "authenticated",
+        "auth_method": "oauth",
+        "access_token": access_token,
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "avatar_url": user.avatar_url,
+            "global_role": user.global_role
+        }
+    }
+
+@app.post("/api/auth/token-login")
+def token_login(req: TokenLoginRequest, db: Session = Depends(get_db)):
+    """Authenticates via Personal Access Token (PAT) or username."""
+    token = req.token.strip() if req.token else None
+    username = req.username.strip() if req.username else None
+
+    if not token and not username:
+        raise HTTPException(status_code=400, detail="Provide a GitHub Personal Access Token or username.")
+
+    avatar_url = None
+    email = None
+    github_id = None
+
+    if token:
+        try:
+            github_svc = GitHubService(token)
+            profile = github_svc.get_authenticated_user(token)
+            username = profile.get("login") or username
+            email = profile.get("email")
+            avatar_url = profile.get("avatar_url")
+            github_id = str(profile.get("id")) if profile.get("id") else None
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Invalid GitHub Token: {str(e)}")
+
+    if not username:
+        username = "developer"
+
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        user = User(
+            github_id=github_id,
+            username=username,
+            email=email,
+            avatar_url=avatar_url or f"https://avatars.githubusercontent.com/u/583231",
+            global_role="Admin" if db.query(User).count() == 0 else "Developer"
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    else:
+        if avatar_url: user.avatar_url = avatar_url
+        if email: user.email = email
+        db.commit()
+
+    return {
+        "status": "authenticated",
+        "auth_method": "token" if token else "username",
+        "access_token": token,
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "avatar_url": user.avatar_url,
+            "global_role": user.global_role
+        }
+    }
+
+@app.post("/api/auth/demo-login")
+def demo_login(db: Session = Depends(get_db)):
+    """1-Click On-Call DevOps Login for testing and immediate access."""
+    user = db.query(User).filter(User.username == "oncall_devops").first()
+    if not user:
+        user = User(
+            username="oncall_devops",
+            email="devops@reliability.internal",
+            avatar_url="https://avatars.githubusercontent.com/u/583231",
+            global_role="Admin"
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    return {
+        "status": "authenticated",
+        "auth_method": "demo",
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "avatar_url": user.avatar_url,
+            "global_role": user.global_role
+        }
+    }
+
+@app.get("/api/auth/me")
+def get_current_user(db: Session = Depends(get_db)):
+    """Returns the authenticated user profile."""
+    user = db.query(User).first()
+    if not user:
+        return {"authenticated": False, "user": None}
+    return {
+        "authenticated": True,
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "avatar_url": user.avatar_url,
+            "global_role": user.global_role
+        }
+    }
+
+@app.post("/api/auth/logout")
+def logout():
+    """Logs out active session."""
+    return {"status": "logged_out"}
 
 # ==========================================
 # MILESTONE 1: REPOSITORY & RBAC ENDPOINTS
@@ -840,12 +1047,16 @@ def get_notification_preferences(db: Session = Depends(get_db)):
         db.commit()
         db.refresh(pref)
 
-    return {
+    pref_data = {
         "email_enabled": pref.email_enabled,
         "slack_enabled": pref.slack_enabled,
         "discord_enabled": pref.discord_enabled,
         "in_app_enabled": pref.in_app_enabled,
         "notify_critical_only": pref.notify_critical_only
+    }
+    return {
+        **pref_data,
+        "preferences": pref_data
     }
 
 @app.put("/api/notifications/preferences")

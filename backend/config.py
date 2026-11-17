@@ -12,9 +12,12 @@ dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 if os.path.exists(dotenv_path):
     load_dotenv(dotenv_path)
 
-# GitHub API Configuration
+# GitHub API & OAuth Configuration
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 GITHUB_API_URL = os.getenv("GITHUB_API_URL", "https://api.github.com")
+GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "")
+GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET", "")
+GITHUB_OAUTH_REDIRECT_URI = os.getenv("GITHUB_OAUTH_REDIRECT_URI", "")
 TIMEOUT = int(os.getenv("TIMEOUT", "30"))
 
 # Gemini API Configuration

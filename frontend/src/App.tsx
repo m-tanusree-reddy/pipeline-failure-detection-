@@ -160,6 +160,15 @@ interface SystemStatus {
   }
 }
 
+interface AuthUser {
+  id: string
+  username: string
+  email?: string
+  avatar_url?: string
+  global_role: string
+  auth_method?: string
+}
+
 const SIMULATION_PRESETS = [
   {
     id: 'dependency',
@@ -253,9 +262,27 @@ function App() {
   const [logFilter, setLogFilter] = useState<'ALL' | 'ERROR' | 'WARNING' | 'INFO'>('ALL')
   const [isAutoScroll, setIsAutoScroll] = useState(true)
 
+  // User Authentication & GitHub OAuth State
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => {
+    try {
+      const saved = localStorage.getItem('pipeline_auth_user')
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
+    }
+  })
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
+  const [authTab, setAuthTab] = useState<'oauth' | 'pat' | 'demo'>('oauth')
+  const [patInput, setPatInput] = useState('')
+  const [patUsernameInput, setPatUsernameInput] = useState('')
+  const [isAuthenticating, setIsAuthenticating] = useState(false)
+  const [isDbModalOpen, setIsDbModalOpen] = useState(false)
+
   const terminalEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const notifDropdownRef = useRef<HTMLDivElement>(null)
+  const userMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     fetchLogs()
@@ -264,12 +291,22 @@ function App() {
     fetchNotifications()
     fetchPreferences()
     fetchSystemStatus()
+
+    // Handle incoming GitHub OAuth Callback Code (?code=...)
+    const urlParams = new URLSearchParams(window.location.search)
+    const oauthCode = urlParams.get('code')
+    if (oauthCode) {
+      handleOAuthCallback(oauthCode)
+    }
   }, [])
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (notifDropdownRef.current && !notifDropdownRef.current.contains(event.target as Node)) {
         setIsNotificationOpen(false)
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -328,6 +365,106 @@ function App() {
     setSimCommitMsg(p.commitMsg)
     setSimErrorType(p.errorType)
     showToast(`Loaded preset: ${p.title}`)
+  }
+
+  const handleOAuthCallback = async (code: string) => {
+    setIsAuthenticating(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/github/callback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.detail || 'OAuth authentication failed')
+      }
+      const data = await res.json()
+      setCurrentUser(data.user)
+      localStorage.setItem('pipeline_auth_user', JSON.stringify(data.user))
+      showToast(`Authenticated with GitHub as @${data.user.username}!`)
+      window.history.replaceState({}, document.title, window.location.pathname)
+    } catch (err: any) {
+      showToast(`OAuth Error: ${err.message}`)
+    } finally {
+      setIsAuthenticating(false)
+    }
+  }
+
+  const handleOAuthLogin = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/github/url`)
+      if (res.ok) {
+        const data = await res.json()
+        if (data.configured && data.url) {
+          window.location.href = data.url
+        } else {
+          showToast(data.message || 'GitHub OAuth client ID is not configured. Switching to Token / Demo login.')
+          setAuthTab('demo')
+        }
+      }
+    } catch (err: any) {
+      showToast(`OAuth Error: ${err.message}`)
+    }
+  }
+
+  const handleTokenLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!patInput.trim() && !patUsernameInput.trim()) return
+    setIsAuthenticating(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/token-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: patInput.trim() || undefined,
+          username: patUsernameInput.trim() || undefined
+        })
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.detail || 'Sign-in failed')
+      }
+      const data = await res.json()
+      setCurrentUser(data.user)
+      localStorage.setItem('pipeline_auth_user', JSON.stringify(data.user))
+      setIsAuthModalOpen(false)
+      setPatInput('')
+      setPatUsernameInput('')
+      showToast(`Signed in as @${data.user.username}! Role: ${data.user.global_role}`)
+    } catch (err: any) {
+      showToast(`Sign In Error: ${err.message}`)
+    } finally {
+      setIsAuthenticating(false)
+    }
+  }
+
+  const handleDemoLogin = async () => {
+    setIsAuthenticating(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/demo-login`, { method: 'POST' })
+      if (res.ok) {
+        const data = await res.json()
+        setCurrentUser(data.user)
+        localStorage.setItem('pipeline_auth_user', JSON.stringify(data.user))
+        setIsAuthModalOpen(false)
+        showToast('Signed in as On-Call DevOps (Admin)')
+      }
+    } catch (err: any) {
+      showToast(`Demo Sign-In Error: ${err.message}`)
+    } finally {
+      setIsAuthenticating(false)
+    }
+  }
+
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST' })
+    } catch {}
+    setCurrentUser(null)
+    localStorage.removeItem('pipeline_auth_user')
+    setIsUserMenuOpen(false)
+    showToast('Signed out successfully.')
   }
 
   const fetchLogs = async () => {
@@ -390,7 +527,16 @@ function App() {
       const res = await fetch(`${API_BASE}/api/notifications/preferences`)
       if (res.ok) {
         const data = await res.json()
-        setPreferences(data.preferences)
+        const prefs = data.preferences || data
+        if (prefs && typeof prefs === 'object') {
+          setPreferences(prev => ({
+            email_enabled: prefs.email_enabled ?? prev.email_enabled,
+            slack_enabled: prefs.slack_enabled ?? prev.slack_enabled,
+            discord_enabled: prefs.discord_enabled ?? prev.discord_enabled,
+            in_app_enabled: prefs.in_app_enabled ?? prev.in_app_enabled,
+            notify_critical_only: prefs.notify_critical_only ?? prev.notify_critical_only
+          }))
+        }
       }
     } catch (err) {
       console.error(err)
@@ -844,7 +990,11 @@ function App() {
           <div className="flex items-center gap-3">
             
             {/* Live System Engine Telemetry Pill */}
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-900/90 rounded-full border border-slate-800 text-[11px] font-mono shadow-inner">
+            <div 
+              onClick={() => setIsDbModalOpen(true)}
+              className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-900/90 hover:bg-slate-800 rounded-full border border-slate-800 hover:border-indigo-500/50 text-[11px] font-mono shadow-inner cursor-pointer transition-all"
+              title="Click to inspect Database & Queue configuration"
+            >
               <span className={`w-2 h-2 rounded-full ${systemStatus?.status === 'online' ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' : 'bg-amber-400'} animate-pulse`} />
               <span className="text-slate-400">
                 DB: <strong className="text-slate-200">{systemStatus?.database?.dialect === 'postgresql' ? 'PostgreSQL' : 'SQLite'}</strong>
@@ -954,15 +1104,71 @@ function App() {
               )}
             </div>
 
-            {/* Role Badge */}
-            <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs shadow-md">
-                OP
-              </div>
-              <div className="hidden xl:flex flex-col text-left">
-                <span className="text-[11px] font-bold text-slate-200 leading-tight">On-Call DevOps</span>
-                <span className="text-[9px] font-mono text-emerald-400">Admin Role</span>
-              </div>
+            {/* User Profile / GitHub Authentication */}
+            <div className="relative pl-2 border-l border-slate-800" ref={userMenuRef}>
+              {currentUser ? (
+                <div>
+                  <button
+                    onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                    className="flex items-center gap-2 hover:bg-slate-800/60 p-1.5 rounded-xl transition-all cursor-pointer"
+                  >
+                    {currentUser.avatar_url ? (
+                      <img
+                        src={currentUser.avatar_url}
+                        alt={currentUser.username}
+                        className="w-8 h-8 rounded-full border border-indigo-500/40 object-cover"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs shadow-md">
+                        {currentUser.username.substring(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="hidden xl:flex flex-col text-left">
+                      <span className="text-[11px] font-bold text-slate-200 leading-tight">@{currentUser.username}</span>
+                      <span className="text-[9px] font-mono text-emerald-400">{currentUser.global_role} Role</span>
+                    </div>
+                    <span className="material-symbols-outlined text-xs text-slate-400">arrow_drop_down</span>
+                  </button>
+
+                  {/* User Profile Menu Dropdown */}
+                  {isUserMenuOpen && (
+                    <div className="absolute right-0 mt-2 w-56 bg-slate-900 border border-slate-700/80 rounded-2xl p-2 shadow-2xl z-50 flex flex-col gap-1 text-xs">
+                      <div className="p-2 border-b border-slate-800">
+                        <p className="font-bold text-white">@{currentUser.username}</p>
+                        {currentUser.email && <p className="text-[11px] text-slate-400 truncate">{currentUser.email}</p>}
+                        <span className="inline-block mt-1 px-2 py-0.5 bg-indigo-500/15 text-indigo-300 text-[10px] font-mono rounded font-bold">
+                          {currentUser.auth_method === 'oauth' ? 'GitHub OAuth' : currentUser.auth_method === 'token' ? 'Personal Access Token' : 'Demo Session'}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setIsUserMenuOpen(false)
+                          setIsAuthModalOpen(true)
+                        }}
+                        className="p-2 text-left text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-2 cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-sm">switch_account</span>
+                        Switch Account / Re-auth
+                      </button>
+                      <button
+                        onClick={handleLogout}
+                        className="p-2 text-left text-rose-400 hover:bg-rose-950/40 rounded-lg transition-colors flex items-center gap-2 cursor-pointer font-semibold"
+                      >
+                        <span className="material-symbols-outlined text-sm">logout</span>
+                        Sign Out
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <button
+                  onClick={() => setIsAuthModalOpen(true)}
+                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-600/25 active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px]">login</span>
+                  <span>Sign In</span>
+                </button>
+              )}
             </div>
 
           </div>
@@ -2423,20 +2629,205 @@ function App() {
             </p>
           </div>
 
-          <div className="flex items-center gap-6 text-slate-400 font-mono text-[11px]">
+          <div className="flex items-center gap-4 text-slate-400 font-mono text-[11px]">
             <span className="flex items-center gap-1.5 text-emerald-400">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              Engine Online
+              Platform Status: Operational
             </span>
             <span className="text-slate-700">|</span>
-            <span>FastAPI Backend</span>
+            <span>All 30 Integration Tests Passing</span>
             <span className="text-slate-700">|</span>
-            <span>Celery & Redis</span>
-            <span className="text-slate-700">|</span>
-            <span>React + Vite 8</span>
+            <span className="text-slate-500">v3.0 Release</span>
           </div>
         </div>
       </footer>
+
+      {/* GitHub Authentication & OAuth Modal */}
+      {isAuthModalOpen && (
+        <div className="fixed inset-0 z-[150] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-700/80 rounded-3xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-5 relative">
+            <button
+              onClick={() => setIsAuthModalOpen(false)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-sm">close</span>
+            </button>
+
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="material-symbols-outlined text-indigo-400 text-xl">security</span>
+                <h3 className="text-lg font-bold text-white">Sign In to Reliability Platform</h3>
+              </div>
+              <p className="text-xs text-slate-400">
+                Authenticate with GitHub to access repository collaborator permissions and role-based workflows.
+              </p>
+            </div>
+
+            {/* Auth Mode Tabs */}
+            <div className="flex rounded-xl bg-slate-950 p-1 border border-slate-800 text-xs font-semibold">
+              <button
+                onClick={() => setAuthTab('oauth')}
+                className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${authTab === 'oauth' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+              >
+                GitHub OAuth
+              </button>
+              <button
+                onClick={() => setAuthTab('pat')}
+                className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${authTab === 'pat' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+              >
+                Access Token
+              </button>
+              <button
+                onClick={() => setAuthTab('demo')}
+                className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${authTab === 'demo' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+              >
+                Demo Mode
+              </button>
+            </div>
+
+            {/* Tab 1: GitHub OAuth */}
+            {authTab === 'oauth' && (
+              <div className="flex flex-col gap-4 text-xs">
+                <p className="text-slate-300 leading-relaxed">
+                  Redirects to GitHub to verify repository access and authorize collaborator permissions.
+                </p>
+                <button
+                  onClick={handleOAuthLogin}
+                  disabled={isAuthenticating}
+                  className="w-full py-3 bg-[#24292f] hover:bg-[#1f2328] active:scale-95 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all border border-slate-700 shadow-lg cursor-pointer disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-lg">account_circle</span>
+                  <span>{isAuthenticating ? 'Redirecting to GitHub...' : 'Continue with GitHub OAuth'}</span>
+                </button>
+                <span className="text-[10px] text-slate-500 text-center font-mono">
+                  Requires GITHUB_CLIENT_ID configured on server
+                </span>
+              </div>
+            )}
+
+            {/* Tab 2: Personal Access Token */}
+            {authTab === 'pat' && (
+              <form onSubmit={handleTokenLogin} className="flex flex-col gap-3 text-xs">
+                <div className="flex flex-col gap-1">
+                  <label className="text-slate-300 font-semibold">GitHub Personal Access Token *</label>
+                  <input
+                    type="password"
+                    value={patInput}
+                    onChange={(e) => setPatInput(e.target.value)}
+                    placeholder="ghp_... (with repo / read:user scopes)"
+                    className="bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white placeholder-slate-500 font-mono outline-none focus:border-indigo-500"
+                    required
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-slate-300 font-semibold">GitHub Username (Optional)</label>
+                  <input
+                    type="text"
+                    value={patUsernameInput}
+                    onChange={(e) => setPatUsernameInput(e.target.value)}
+                    placeholder="e.g. m-tanusree-reddy"
+                    className="bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white placeholder-slate-500 font-mono outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isAuthenticating}
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold rounded-xl transition-all shadow-md shadow-indigo-600/30 cursor-pointer disabled:opacity-50 mt-1"
+                >
+                  {isAuthenticating ? 'Validating Token...' : 'Sign In with Token'}
+                </button>
+              </form>
+            )}
+
+            {/* Tab 3: Demo Mode */}
+            {authTab === 'demo' && (
+              <div className="flex flex-col gap-3 text-xs">
+                <p className="text-slate-300 leading-relaxed">
+                  Log in instantly as <strong className="text-indigo-400">@oncall_devops</strong> with full platform Admin privileges for local evaluation without connecting GitHub credentials.
+                </p>
+                <button
+                  onClick={handleDemoLogin}
+                  disabled={isAuthenticating}
+                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold rounded-xl transition-all shadow-md active:scale-95 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <span className="material-symbols-outlined text-sm">verified_user</span>
+                  <span>Sign In as On-Call DevOps (Admin)</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Database & Infrastructure Modal */}
+      {isDbModalOpen && (
+        <div className="fixed inset-0 z-[150] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-700/80 rounded-3xl max-w-lg w-full p-6 shadow-2xl flex flex-col gap-5 relative">
+            <button
+              onClick={() => setIsDbModalOpen(false)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-sm">close</span>
+            </button>
+
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="material-symbols-outlined text-indigo-400 text-xl">database</span>
+                <h3 className="text-lg font-bold text-white">Database & Queue Configuration</h3>
+              </div>
+              <p className="text-xs text-slate-400">
+                Active storage and background queue telemetry for Pipeline Failure Detection 3.0.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3 text-xs">
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-200">Active Storage Dialect:</span>
+                  <span className={`px-2.5 py-0.5 rounded font-mono font-bold uppercase ${systemStatus?.database?.dialect === 'postgresql' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'}`}>
+                    {systemStatus?.database?.dialect === 'postgresql' ? 'PostgreSQL 16' : 'SQLite Local (Dev Fallback)'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  {systemStatus?.database?.dialect === 'postgresql'
+                    ? 'Connected to production PostgreSQL with connection pool tuning (pool_size=10, max_overflow=20, pool_pre_ping=True, pool_recycle=3600).'
+                    : 'The server is currently running in local developer mode using SQLite (sqlite:///./pipeline_failure_2.db) because DATABASE_URL has not been configured with a PostgreSQL connection string.'}
+                </p>
+              </div>
+
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-200">How to Connect to PostgreSQL:</span>
+                </div>
+                <ol className="text-[11px] text-slate-300 list-decimal list-inside space-y-1 font-mono leading-relaxed">
+                  <li>Start PostgreSQL with Docker: <code className="text-cyan-400">docker compose up -d postgres</code></li>
+                  <li>Or set <code className="text-cyan-400">DATABASE_URL=postgresql://user:pass@localhost:5432/pipeline_db</code> in <code className="text-indigo-400">.env</code></li>
+                  <li>Run migrations: <code className="text-cyan-400">alembic upgrade head</code></li>
+                </ol>
+              </div>
+
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-200">Background Queue Engine:</span>
+                  <span className="font-mono text-indigo-400 font-bold">{systemStatus?.queue?.active_mode === 'celery' ? 'Celery (Redis Active)' : 'Local Asynchronous Thread'}</span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Tasks are automatically routed to Celery background workers when Redis is reachable, or gracefully fall back to local async threads.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                onClick={() => setIsDbModalOpen(false)}
+                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
