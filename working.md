@@ -353,3 +353,25 @@ Built the full `backend/tools/` package with 4 tools and an orchestrator:
   - Alembic metadata schema registration across all 8 tables.
 - **All 23 tests across Milestones 1, 2, 3, and 4 passed cleanly in 27.33s** (`pytest backend/tests/test_v2_milestones.py backend/tests/test_v3_notifications.py backend/tests/test_v4_production_backend.py -v`).
 - React frontend compiled and built in **429ms with 0 errors** (`tsc -b && vite build`).
+
+## Day 11 Production Security Hardening & Zero-Hardcoded Secrets
+
+### 1. Database Credentials Audit & Sanitization
+- **Docker Compose Stack Hardening (`docker-compose.yml`):**
+  - Completely eradicated default and hardcoded credentials (`pipeline_user`, `pipeline_secure_pass`).
+  - Enforced strict environment variable interpolation: `${POSTGRES_USER:?Error: POSTGRES_USER must be set in your .env file}` and `${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be set in your .env file}`.
+  - Dynamically injected database connection URLs via `${DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pipeline_db}}`.
+  - Added support for Redis password authentication via `${REDIS_PASSWORD}`.
+- **Production Security Validation Guardrail (`backend/db/session.py`):**
+  - Implemented `validate_db_security(db_url, environment)`.
+  - Blocks server initialization in `production` mode if SQLite is used or if known trivial/default passwords (`password`, `admin`, `root`, `pipeline_secure_pass`) are detected.
+  - Maintains zero-friction local developer experience when `ENVIRONMENT=development` (allows SQLite).
+- **Environment Templates:**
+  - Created root `.env.example` documenting all production secrets, pool tuning, and Gemini keys.
+  - Sanitized `backend/.env.example` with zero hardcoded credentials.
+  - Updated `backend/config.py` to seamlessly cascade from root `.env` down to `backend/.env`.
+
+### 2. Verification & Validation
+- Added `test_production_database_security_validation()` to `backend/tests/test_v4_production_backend.py`.
+- **All 24 tests across Milestones 1-4 pass in 23.26s** (`pytest backend/tests/test_v2_milestones.py backend/tests/test_v3_notifications.py backend/tests/test_v4_production_backend.py -v`).
+- Committed (`553ca12`) and pushed directly to `origin/main`.
