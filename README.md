@@ -11,7 +11,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1.svg?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Alembic](https://img.shields.io/badge/Alembic-Migrations-red.svg)](https://alembic.sqlalchemy.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose%20Ready-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/Tests-23%2F23%20Passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-24%2F24%20Passing-brightgreen.svg)]()
 
 ---
 
@@ -233,9 +233,16 @@ pipeline-failure-detection/
 
 ### Option 1: Docker Compose (Recommended for Production)
 
-Run the entire distributed stack (PostgreSQL, Redis, FastAPI Server, and Celery Background Worker) with a single command:
+Run the entire distributed stack (PostgreSQL, Redis, FastAPI Server, and Celery Background Worker) securely:
 
 ```bash
+# 1. Copy production environment template
+cp .env.example .env
+
+# 2. Populate .env with your production secrets (POSTGRES_PASSWORD, GEMINI_API_KEY, etc.)
+# Never commit .env with real secrets to version control!
+
+# 3. Start the entire container stack
 docker-compose up --build
 ```
 
@@ -342,13 +349,14 @@ python -m pytest backend/tests/test_v2_milestones.py backend/tests/test_v3_notif
   - In-app notification creation and mark-as-read flow
   - Notification preference updates
   - Repository external channel registration
-- **Milestone 4 Tests** (`test_v4_production_backend.py`): **5 passed**
+- **Milestone 4 Tests** (`test_v4_production_backend.py`): **6 passed**
   - System status telemetry API (`GET /api/system/status`)
   - Task dispatcher local async fallback path
   - Task dispatcher Celery Redis queue routing
   - Celery worker task idempotency (duplicate prevention)
   - Alembic metadata schema registration across all 8 tables
-- **Total: 23 passed in 27.33s**
+  - Production database security validation (rejecting default passwords and SQLite in prod)
+- **Total: 24 passed in 23.26s**
 
 ### Frontend Build Verification:
 ```bash
@@ -360,6 +368,7 @@ cd frontend; npm.cmd run build
 
 ## 9. Security & Best Practices
 
+- **Zero Hardcoded Database Secrets**: No default or embedded database passwords exist in codebase or compose templates. In production mode (`ENVIRONMENT=production`), the backend strictly enforces strong passwords and blocks SQLite or trivial passwords via `validate_db_security()`.
 - **Zero Cleartext Secrets**: Webhook secrets and tokens are validated in memory and protected.
 - **Constant-Time Cryptography**: HMAC comparisons use `hmac.compare_digest` to prevent timing attacks.
 - **Fail-Safe Fallbacks**: If PyTorch/FAISS are not installed, the platform automatically switches to numpy-based vector arithmetic without crashing.

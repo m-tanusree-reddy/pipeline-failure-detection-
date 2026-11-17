@@ -7,15 +7,15 @@ services:
     container_name: pipeline_postgres
     restart: always
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-pipeline_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pipeline_secure_pass}
+      POSTGRES_USER: ${POSTGRES_USER:?Error: POSTGRES_USER must be set in your .env file}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be set in your .env file}
       POSTGRES_DB: ${POSTGRES_DB:-pipeline_db}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pipeline_user -d pipeline_db"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -25,12 +25,25 @@ services:
     image: redis:7-alpine
     container_name: pipeline_redis
     restart: always
+    command: >
+      sh -c 'if [ -n "$$REDIS_PASSWORD" ]; then
+               redis-server --requirepass "$$REDIS_PASSWORD";
+             else
+               redis-server;
+             fi'
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: >
+        sh -c 'if [ -n "$$REDIS_PASSWORD" ]; then
+                 redis-cli -a "$$REDIS_PASSWORD" ping;
+               else
+                 redis-cli ping;
+               fi'
       interval: 5s
       timeout: 5s
       retries: 5
@@ -48,13 +61,16 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://pipeline_user:pipeline_secure_pass@postgres:5432/pipeline_db
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pipeline_db}}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/0}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
       - TASK_QUEUE_MODE=celery
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
     depends_on:
       postgres:
         condition: service_healthy
@@ -70,12 +86,14 @@ services:
     restart: always
     command: celery -A backend.celery_app worker --loglevel=info --concurrency=2
     environment:
-      - DATABASE_URL=postgresql://pipeline_user:pipeline_secure_pass@postgres:5432/pipeline_db
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pipeline_db}}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/0}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy

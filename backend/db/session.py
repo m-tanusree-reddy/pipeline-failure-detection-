@@ -5,6 +5,41 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 # Default to SQLite local database file in project root if not configured for PostgreSQL
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./pipeline_failure_2.db")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
+
+INSECURE_DEFAULT_PASSWORDS = {
+    "pipeline_secure_pass",
+    "password",
+    "postgres",
+    "admin",
+    "root",
+    "123456",
+    "secret"
+}
+
+def validate_db_security(db_url: str, environment: str = "development") -> bool:
+    """
+    Enforces enterprise database security:
+    - Forbids SQLite in production.
+    - Forbids hardcoded, default, or trivial database passwords in production.
+    """
+    env = environment.lower()
+    if env in ("production", "prod"):
+        if not db_url or db_url.startswith("sqlite"):
+            raise ValueError(
+                "Production Error: SQLite is not permitted in production. "
+                "A secure PostgreSQL DATABASE_URL must be configured."
+            )
+        for insecure_pw in INSECURE_DEFAULT_PASSWORDS:
+            if f":{insecure_pw}@" in db_url:
+                raise ValueError(
+                    f"Production Security Violation: Insecure database password detected (':{insecure_pw}@'). "
+                    "You must configure a strong, unique secret via POSTGRES_PASSWORD / DATABASE_URL."
+                )
+    return True
+
+# Validate database configuration security against current environment
+validate_db_security(DATABASE_URL, ENVIRONMENT)
 
 is_sqlite = DATABASE_URL.startswith("sqlite")
 

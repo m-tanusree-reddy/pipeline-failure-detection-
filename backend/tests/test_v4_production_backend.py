@@ -12,7 +12,7 @@ if project_root not in sys.path:
     sys.path.append(project_root)
 
 from backend.server import app
-from backend.db.session import SessionLocal, get_db_telemetry
+from backend.db.session import SessionLocal, get_db_telemetry, validate_db_security
 from backend.db.models import Base, Repository, WorkflowRun, FailureAnalysis
 from backend.services.task_dispatcher import dispatch_analysis, get_queue_telemetry
 import backend.services.task_dispatcher as dispatcher_module
@@ -161,3 +161,29 @@ def test_alembic_metadata_tables():
     }
     for table in expected_tables:
         assert table in table_names, f"Expected table {table} not registered in Base.metadata"
+
+def test_production_database_security_validation():
+    """
+    Validates enterprise production security:
+    - Rejects SQLite in production.
+    - Rejects default or trivial passwords in production.
+    - Permits secure PostgreSQL URLs in production.
+    - Permits SQLite and local test URLs in development.
+    """
+    # 1. Development mode allows SQLite
+    assert validate_db_security("sqlite:///./pipeline_failure_2.db", "development") is True
+
+    # 2. Production mode forbids SQLite
+    with pytest.raises(ValueError, match="SQLite is not permitted in production"):
+        validate_db_security("sqlite:///./pipeline_failure_2.db", "production")
+
+    # 3. Production mode forbids insecure default passwords
+    with pytest.raises(ValueError, match="Insecure database password detected"):
+        validate_db_security("postgresql://pipeline_user:pipeline_secure_pass@postgres:5432/pipeline_db", "production")
+
+    with pytest.raises(ValueError, match="Insecure database password detected"):
+        validate_db_security("postgresql://admin:password@postgres:5432/pipeline_db", "production")
+
+    # 4. Production mode permits strong, randomized passwords
+    secure_url = "postgresql://prod_admin:c98f7e2a90b414d7a83c@db.internal:5432/production_pipeline"
+    assert validate_db_security(secure_url, "production") is True

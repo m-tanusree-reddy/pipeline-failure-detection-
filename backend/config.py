@@ -2,9 +2,15 @@
 from dotenv import load_dotenv
 import os
 
-# Load environment variables from .env relative to this file
+# Load environment variables: check project root first, then backend/.env
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+root_env = os.path.join(root_dir, ".env")
+if os.path.exists(root_env):
+    load_dotenv(root_env)
+
 dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-load_dotenv(dotenv_path)
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path)
 
 # GitHub API Configuration
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
