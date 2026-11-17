@@ -11,7 +11,11 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1.svg?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Alembic](https://img.shields.io/badge/Alembic-Migrations-red.svg)](https://alembic.sqlalchemy.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose%20Ready-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/Tests-24%2F24%20Passing-brightgreen.svg)]()
+[![Prometheus](https://img.shields.io/badge/Prometheus-Metrics-E6522C.svg?logo=prometheus&logoColor=white)](https://prometheus.io/)
+[![Grafana](https://img.shields.io/badge/Grafana-Dashboards-F46800.svg?logo=grafana&logoColor=white)](https://grafana.com/)
+[![Sentry](https://img.shields.io/badge/Sentry-Error%20Tracking-362D59.svg?logo=sentry&logoColor=white)](https://sentry.io/)
+[![CI/CD](https://img.shields.io/badge/GitHub%20Actions-CI%2FCD-2088FF.svg?logo=githubactions&logoColor=white)](https://github.com/features/actions)
+[![Tests](https://img.shields.io/badge/Tests-30%2F30%20Passing-brightgreen.svg)]()
 
 ---
 
@@ -132,8 +136,20 @@ flowchart TD
 - **Celery + Redis Queue**: Offloads heavy log parsing, RAG embeddings, and LLM reasoning to asynchronous worker processes with late acknowledgements and prefetch limits.
 - **Smart Dispatcher**: Zero-config auto-detection: runs via Celery when Redis is available, or gracefully falls back to local asynchronous threads in standalone mode.
 - **PostgreSQL Connection Pool Tuning**: Configured with `pool_size=10`, `max_overflow=20`, `pool_pre_ping=True`, and `pool_recycle=3600`.
-- **Alembic Database Migrations**: Version-controlled migrations managing 8 relational tables.
-- **Docker Compose Stack**: 1-command startup orchestrating PostgreSQL 16, Redis 7, FastAPI Backend, and Celery Worker.
+- **Alembic Database Migrations**: Version-controlled migrations managing 9 relational tables.
+- **Docker Compose Stack**: 1-command startup orchestrating PostgreSQL 16, Redis 7, FastAPI Backend, Celery Worker, Prometheus, and Grafana.
+
+### F. Advanced AI Intelligence & Granular Classification (Milestone 5)
+- **Granular Failure Archetypes**: Categorizes root causes into 8 distinct failure types (`DEPENDENCY_INCOMPATIBILITY`, `RESOURCE_EXHAUSTION`, `SECRETS_CREDENTIALS_EXPIRATION`, `BUILD_SYNTAX_ERROR`, `FLAKY_TEST`, `ASSERTION_FAILURE`, `INFRASTRUCTURE_TIMEOUT`, `WORKFLOW_CONFIG_ERROR`).
+- **Composite Severity Scoring Engine**: Calculates normalized impact score (0.0 to 1.0) based on base archetype severity, blast radius (production trunk vs feature branch), and recurrence multiplier ($1.0 + 0.1 \times \text{recurrence}$). Mapped to `CRITICAL`, `HIGH`, `MEDIUM`, or `LOW` tiers.
+- **AI Code-Level Patch Synthesis**: Synthesizes standard unified Git diff patches (`diff --git a/... b/...`) with targeted file paths, replacement line hunks, risk analysis (`LOW`/`MEDIUM`/`HIGH`), rationale, and automated validation test commands.
+- **Human-in-the-Loop Remediation Workflows**: Multi-stage review lifecycle (`pending_review` $\rightarrow$ `approved`/`rejected` $\rightarrow$ `applied`). Role-based access control enforces that only authorized engineers (`Developer`, `Admin`, `Owner`) can approve or reject patches, with simulated staging execution before merge.
+
+### G. Observability, Security & Production CI/CD (Milestone 6)
+- **Prometheus Metrics Engine**: Exposes standard OpenMetrics metrics at `GET /api/metrics` tracking failure counts, recurrence rate, notifications delivered, automated patch generations, analysis duration histograms, and queue depth.
+- **Grafana Telemetry Dashboard**: Pre-configured dashboard (`monitoring/grafana/dashboards/pipeline_dashboard.json`) visualizing MTTD (Mean Time to Detect), recurrence trends, severity distribution, and Celery task throughput.
+- **Sentry Error Tracking**: Integrated Sentry SDK for real-time unhandled exception monitoring, error breadcrumbs, and performance transaction tracing across FastAPI and Celery workers.
+- **Automated GitHub Actions CI/CD**: Workflow (`.github/workflows/ci.yml`) triggering on pushes to `main` and feature PRs to execute backend pytest suites (30 tests), run Alembic migration checks, compile the frontend Vite bundle, and verify Docker builds.
 
 ---
 
@@ -180,23 +196,30 @@ flowchart LR
 
 ```
 pipeline-failure-detection/
+├── .github/                         # GitHub Actions CI/CD workflows
+│   └── workflows/
+│       └── ci.yml                   # Automated test, lint, Alembic & Docker CI
 ├── alembic/                         # Alembic database migrations
 │   ├── env.py                       # Migration environment config
 │   └── versions/                    # Versioned migration revisions
-│       └── d6ec4146f284_initial_schema_3_0.py
+│       ├── d6ec4146f284_initial_schema_3_0.py
+│       └── 45f5112cb868_add_code_remediations_and_severity.py
 ├── backend/
 │   ├── celery_app.py                # Celery instance & Redis broker detection
 │   ├── config.py                    # Environment settings & directory paths
 │   ├── pipeline.py                  # End-to-end 11-stage AI pipeline orchestrator
-│   ├── server.py                    # FastAPI server & route handlers
+│   ├── server.py                    # FastAPI server & route handlers (with Sentry)
 │   ├── db/
-│   │   ├── models.py                # 8 SQLAlchemy models (RBAC, Webhooks, Notifs)
+│   │   ├── models.py                # 9 SQLAlchemy models (RBAC, Webhooks, Notifs, Patches)
 │   │   └── session.py               # Database session & connection pool tuning
 │   ├── services/
+│   │   ├── classification_service.py # 8-archetype failure classifier & composite severity
 │   │   ├── github_service.py        # URL parsing & GitHub API collaborator checks
 │   │   ├── historical_failure_service.py # Trace normalization & recurrence memory
+│   │   ├── metrics_service.py       # Prometheus OpenMetrics instrumentation
 │   │   ├── notification_service.py  # Role routing matrix & Slack/Discord formatters
 │   │   ├── rbac_service.py          # Two-tier GitHub-to-App RBAC enforcement
+│   │   ├── remediation_service.py   # AI code patch synthesis & simulated staging execution
 │   │   ├── task_dispatcher.py       # Smart Celery vs Local Async task router
 │   │   └── webhook_service.py       # HMAC-SHA256 signature verifier & deduplication
 │   ├── tasks/
@@ -207,23 +230,30 @@ pipeline-failure-detection/
 │   │   ├── embedder.py              # SentenceTransformers (with FallbackTransformer)
 │   │   ├── retriever.py             # Top-K semantic retriever
 │   │   └── vector_store.py          # FAISS vector database (with numpy fallback)
-│   └── tests/                       # Comprehensive test suites
+│   └── tests/                       # Comprehensive test suites (30 tests passing)
 │       ├── test_v2_milestones.py    # Milestone 1 & 2 tests (11 passing)
 │       ├── test_v3_notifications.py # Milestone 3 tests (7 passing)
-│       └── test_v4_production_backend.py # Milestone 4 tests (5 passing)
+│       ├── test_v4_production_backend.py # Milestone 4 tests (6 passing)
+│       └── test_v5_v6_milestones.py # Milestone 5 & 6 tests (6 passing)
 ├── frontend/                        # Vite + React + TypeScript Client
 │   ├── src/
-│   │   ├── App.tsx                  # Dashboard, Repositories, Webhooks & Notifications
+│   │   ├── App.tsx                  # Dashboard, Repositories, Webhooks, Notifs & Patches
 │   │   ├── index.css                # Tailwind CSS styling & animations
 │   │   └── main.tsx                 # React DOM entrypoint
 │   ├── package.json
 │   ├── tsconfig.json
 │   └── vite.config.ts
-├── docker-compose.yml               # Multi-service stack (Postgres, Redis, API, Worker)
+├── monitoring/                      # Telemetry & Observability stack
+│   ├── prometheus/
+│   │   └── prometheus.yml           # Prometheus scrape configuration
+│   └── grafana/
+│       └── dashboards/
+│           └── pipeline_dashboard.json # Grafana monitoring dashboard
+├── docker-compose.yml               # Multi-service stack (Postgres, Redis, API, Worker, Prometheus, Grafana)
 ├── Dockerfile                       # Multi-stage production container
 ├── alembic.ini                      # Alembic CLI configuration
 ├── requirements.txt                 # Backend Python dependencies
-├── working.md                       # Comprehensive 10-day development log
+├── working.md                       # Comprehensive 12-day development log
 └── README.md                        # Documentation & architecture guide
 ```
 
@@ -320,6 +350,11 @@ npm run dev
 | `POST` | `/api/analyze` | Initiates analysis for manual log uploads (backward-compatible) |
 | `GET` | `/api/runs/{run_id}` | Polls real-time progress for an ongoing AI diagnostic run |
 | `POST` | `/api/fix` | Simulates applying the AI-suggested code remediation patch |
+| `GET` | `/api/runs/{run_id}/remediations` | Lists AI-generated code patches and human review status for a run |
+| `POST` | `/api/remediations/preview` | Generates a live synthesized Git diff preview for a failure trace |
+| `POST` | `/api/remediations/{id}/review` | Human review: approves or rejects a code patch with RBAC verification |
+| `POST` | `/api/remediations/{id}/apply` | Applies an approved patch to the local repository / staging workspace |
+| `GET` | `/api/metrics` | Exposes Prometheus OpenMetrics telemetry for scrapers |
 
 ---
 
@@ -328,8 +363,8 @@ npm run dev
 The platform features an automated test suite across all architectural milestones:
 
 ```bash
-# Run the complete test suite:
-python -m pytest backend/tests/test_v2_milestones.py backend/tests/test_v3_notifications.py backend/tests/test_v4_production_backend.py -v
+# Run the complete 30-test suite across all milestones:
+python -m pytest backend/tests/test_v2_milestones.py backend/tests/test_v3_notifications.py backend/tests/test_v4_production_backend.py backend/tests/test_v5_v6_milestones.py -v
 ```
 
 ### Test Suite Results:
@@ -356,7 +391,14 @@ python -m pytest backend/tests/test_v2_milestones.py backend/tests/test_v3_notif
   - Celery worker task idempotency (duplicate prevention)
   - Alembic metadata schema registration across all 8 tables
   - Production database security validation (rejecting default passwords and SQLite in prod)
-- **Total: 24 passed in 23.26s**
+- **Milestone 5 & 6 Tests** (`test_v5_v6_milestones.py`): **6 passed**
+  - Granular failure classification across 8 archetypes (`DEPENDENCY_INCOMPATIBILITY`, `FLAKY_TEST`, etc.)
+  - Composite multi-factor severity scoring engine (0.0 to 1.0, branch blast radius, recurrence factor)
+  - AI-generated code patch synthesis into unified Git diff format
+  - Simulated staging patch application and syntax validation
+  - Human-in-the-loop review workflow (`pending_review` $\rightarrow$ `approved` $\rightarrow$ `applied`) with RBAC enforcement
+  - Prometheus OpenMetrics exposition endpoint (`/api/metrics`)
+- **Total: 30 passed in 22.36s (100% Pass Rate)**
 
 ### Frontend Build Verification:
 ```bash

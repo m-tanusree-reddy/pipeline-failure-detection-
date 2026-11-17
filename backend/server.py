@@ -5,7 +5,7 @@ import time
 import json
 import logging
 from typing import Dict, Any, Optional, List
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Depends, Request, Header
+from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Depends, Request, Header, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -20,7 +20,7 @@ from backend.pipeline import PipelineOrchestrator
 from backend.db.session import init_db, get_db, SessionLocal, get_db_telemetry
 from backend.db.models import (
     User, Repository, RepositoryMember, WorkflowRun, FailureAnalysis, 
-    NotificationConfig, InAppNotification, NotificationPreference
+    NotificationConfig, InAppNotification, NotificationPreference, CodeRemediation
 )
 from backend.services.github_service import GitHubService, parse_repo_url, GitHubServiceError
 from backend.services.rbac_service import (
@@ -32,6 +32,29 @@ from backend.services.webhook_service import (
 from backend.services.historical_failure_service import HistoricalFailureService
 from backend.services.notification_service import NotificationService, Severity, EventType
 from backend.services.task_dispatcher import dispatch_analysis, get_queue_telemetry
+from backend.services.classification_service import classify_granular_failure, compute_composite_severity
+from backend.services.remediation_service import synthesize_code_patch, apply_simulated_patch
+from backend.services.metrics_service import (
+    get_prometheus_metrics, record_failure_metric, record_recurrence_metric,
+    record_notification_metric, record_remediation_metric, record_analysis_duration
+)
+
+# Milestone 6: Sentry Error Tracking Initialization
+SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+if SENTRY_DSN:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            integrations=[FastApiIntegration()],
+            traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "1.0")),
+            environment=os.getenv("ENVIRONMENT", "development"),
+            send_default_pii=False,
+        )
+        logging.getLogger("backend").info("[Sentry] Error tracking & performance monitoring initialized.")
+    except Exception as se:
+        logging.getLogger("backend").warning(f"[Sentry] Failed to initialize Sentry: {se}")
 
 # Initialize database tables on server start
 init_db()
@@ -85,6 +108,19 @@ class AnalyzeRequest(BaseModel):
 class FixRequest(BaseModel):
     run_id: str
     fix_index: int = 0
+
+class ReviewRemediationRequest(BaseModel):
+    action: str = Field(..., description="'approve' or 'reject'")
+    reviewer_role: Optional[str] = "Developer"
+    reviewer_username: Optional[str] = "admin"
+    comment: Optional[str] = None
+
+class ApplyRemediationRequest(BaseModel):
+    action: Optional[str] = "apply"
+    staging_branch: Optional[str] = "staging/patch-validation"
+
+class PreviewRemediationRequest(BaseModel):
+    run_id: str
 
 # Custom orchestrator subclass to capture stage updates and logs
 class ApiPipelineOrchestrator(PipelineOrchestrator):
@@ -154,18 +190,47 @@ def run_analysis_thread(run_id: str, log_path: str, db_run_id: Optional[str] = N
     try:
         runs[run_id]["status"] = "running"
         orchestrator = ApiPipelineOrchestrator(run_id, update_stage_status, append_run_log)
+        start_exec_time = time.time()
         
         # Execute pipeline orchestrator
         report = orchestrator.run(log_path)
+        analysis_duration = time.time() - start_exec_time
+
+        # Granular Failure Classification & Composite Severity Scoring (Milestone 5)
+        gran_class = classify_granular_failure(
+            error_type=report.failure_type,
+            error_message=report.pipeline_error,
+            log_snippet=report.root_cause
+        )
+        sev_comp = compute_composite_severity(
+            category=gran_class["category"],
+            branch="main",
+            is_recurring=False,
+            recurrence_count=1
+        )
+
+        # AI Code-Level Patch Synthesis (Milestone 5)
+        patch = synthesize_code_patch(
+            category=gran_class["category"],
+            root_cause=report.root_cause,
+            explanation=report.explanation,
+            evidence=report.evidence,
+            log_content=report.pipeline_error
+        )
         
         # Prepare structured report
         report_dict = {
             "pipeline_error": report.pipeline_error,
             "failure_type": report.failure_type,
+            "failure_category": gran_class["category"],
+            "severity_score": sev_comp["severity_score"],
+            "severity_tier": sev_comp["severity_tier"],
+            "blast_radius": sev_comp["blast_radius"],
             "root_cause": report.root_cause,
             "explanation": report.explanation,
             "evidence": report.evidence,
             "suggested_fixes": report.suggested_fixes,
+            "code_patch": patch,
             "original_confidence": report.original_confidence,
             "final_confidence": report.final_confidence,
             "critic_status": report.critic_status,
@@ -178,6 +243,9 @@ def run_analysis_thread(run_id: str, log_path: str, db_run_id: Optional[str] = N
         runs[run_id]["status"] = "completed"
         runs[run_id]["report"] = report_dict
         append_run_log(run_id, "INFO", "Analysis completed successfully. Report generated.")
+
+        # Record analysis duration metric (Milestone 6)
+        record_analysis_duration(analysis_duration, "completed")
 
         # Persist analysis to database and perform correlation + notifications
         if db_run_id:
@@ -196,10 +264,20 @@ def run_analysis_thread(run_id: str, log_path: str, db_run_id: Optional[str] = N
                         current_run_id=wf_run.id
                     )
 
+                    # Recalculate composite severity with verified branch & recurrence
+                    sev_comp = compute_composite_severity(
+                        category=gran_class["category"],
+                        branch=wf_run.head_branch or "main",
+                        is_recurring=corr["is_recurring"],
+                        recurrence_count=corr["recurrence_count"]
+                    )
+
                     analysis = FailureAnalysis(
                         run_id=wf_run.id,
                         analysis_run_id=run_id,
                         failure_type=report.failure_type,
+                        failure_category=gran_class["category"],
+                        severity_score=sev_comp["severity_score"],
                         root_cause=report.root_cause,
                         explanation=report.explanation,
                         suggested_fixes=report.suggested_fixes,
@@ -215,9 +293,29 @@ def run_analysis_thread(run_id: str, log_path: str, db_run_id: Optional[str] = N
                         status="completed"
                     )
                     db.add(analysis)
+
+                    # Persist Code Remediation proposal in database (Milestone 5)
+                    remediation = CodeRemediation(
+                        run_id=wf_run.id,
+                        title=patch["title"],
+                        target_file=patch["target_file"],
+                        diff_content=patch["diff_content"],
+                        rationale=patch["rationale"],
+                        risk_level=patch["risk_level"],
+                        validation_command=patch["validation_command"],
+                        status="pending_review",
+                        reviewer_role="Developer"
+                    )
+                    db.add(remediation)
                     db.commit()
 
-                    # Update in-memory report dict with correlation results
+                    record_remediation_metric("proposed")
+
+                    # Update in-memory report dict with correlation & remediation results
+                    report_dict["remediation_id"] = remediation.id
+                    report_dict["severity_score"] = sev_comp["severity_score"]
+                    report_dict["severity_tier"] = sev_comp["severity_tier"]
+                    report_dict["blast_radius"] = sev_comp["blast_radius"]
                     report_dict["error_signature"] = corr["error_signature"]
                     report_dict["is_recurring"] = corr["is_recurring"]
                     report_dict["recurrence_count"] = corr["recurrence_count"]
@@ -225,6 +323,13 @@ def run_analysis_thread(run_id: str, log_path: str, db_run_id: Optional[str] = N
                     report_dict["past_occurrences"] = corr["past_occurrences"]
 
                     append_run_log(run_id, "INFO", f"[Historical Intelligence] {corr['intelligence_note']}")
+                    append_run_log(run_id, "INFO", f"[AI Remediation] Generated code patch for {patch['target_file']} ({patch['risk_level']} risk).")
+
+                    # Prometheus Metrics Recording (Milestone 6)
+                    repo_slug = wf_run.repository.full_name if wf_run.repository else "unknown"
+                    record_failure_metric(repo_slug, report.failure_type, sev_comp["severity_tier"])
+                    if corr["is_recurring"]:
+                        record_recurrence_metric(repo_slug, sev_comp["severity_tier"])
 
                     # 2. Role-Based Notification Dispatch (Milestone 3 / Recommendation B)
                     notif_svc = NotificationService(db)
@@ -959,7 +1064,7 @@ def get_run_status(run_id: str):
 
 @app.post("/api/fix")
 def apply_fix(request: FixRequest):
-    """Simulates applying the suggested fix."""
+    """Simulates applying the suggested fix (backward compatible)."""
     run_id = request.run_id
     if run_id not in runs:
         raise HTTPException(status_code=404, detail="Run not found.")
@@ -968,6 +1073,216 @@ def apply_fix(request: FixRequest):
         "status": "success",
         "message": f"Fix #{request.fix_index + 1} has been applied successfully. Staging build verified: stable."
     }
+
+# ==========================================
+# MILESTONE 5: CODE REMEDIATION & APPROVAL WORKFLOWS
+# ==========================================
+
+@app.get("/api/runs/{run_id}/remediations")
+def list_remediations(run_id: str, db: Session = Depends(get_db)):
+    """Fetches AI-synthesized code remediation patches for a run."""
+    # Check database first
+    remediations = db.query(CodeRemediation).filter(CodeRemediation.run_id == run_id).all()
+    if not remediations:
+        # Check via analysis_run_id
+        analysis = db.query(FailureAnalysis).filter(FailureAnalysis.analysis_run_id == run_id).first()
+        if analysis:
+            remediations = db.query(CodeRemediation).filter(CodeRemediation.run_id == analysis.run_id).all()
+
+    if remediations:
+        return [
+            {
+                "id": r.id,
+                "run_id": r.run_id,
+                "title": r.title,
+                "target_file": r.target_file,
+                "diff_content": r.diff_content,
+                "rationale": r.rationale,
+                "risk_level": r.risk_level,
+                "validation_command": r.validation_command,
+                "status": r.status,
+                "reviewer_role": r.reviewer_role,
+                "reviewed_by": r.reviewed_by,
+                "review_comments": r.review_comments,
+                "applied_at": r.applied_at.isoformat() if r.applied_at else None,
+                "created_at": r.created_at.isoformat()
+            }
+            for r in remediations
+        ]
+
+    # In-memory run fallback
+    if run_id in runs and runs[run_id].get("report", {}).get("code_patch"):
+        patch = runs[run_id]["report"]["code_patch"]
+        return [{
+            "id": patch.get("patch_id", "patch_in_memory"),
+            "run_id": run_id,
+            "title": patch["title"],
+            "target_file": patch["target_file"],
+            "diff_content": patch["diff_content"],
+            "rationale": patch["rationale"],
+            "risk_level": patch["risk_level"],
+            "validation_command": patch["validation_command"],
+            "status": patch.get("status", "pending_review"),
+            "reviewer_role": "Developer",
+            "reviewed_by": None,
+            "review_comments": None,
+            "applied_at": None,
+            "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        }]
+
+    return []
+
+@app.post("/api/remediations/preview")
+def preview_remediation(req: PreviewRemediationRequest, db: Session = Depends(get_db)):
+    """Synthesizes or retrieves a live preview of the code remediation patch."""
+    run_id = req.run_id
+    if run_id in runs and runs[run_id].get("report"):
+        rep = runs[run_id]["report"]
+        if rep.get("code_patch"):
+            return rep["code_patch"]
+        patch = synthesize_code_patch(
+            category=rep.get("failure_category", "UNKNOWN"),
+            root_cause=rep.get("root_cause", ""),
+            explanation=rep.get("explanation"),
+            log_content=rep.get("pipeline_error")
+        )
+        return patch
+
+    analysis = db.query(FailureAnalysis).filter(
+        (FailureAnalysis.run_id == run_id) | (FailureAnalysis.analysis_run_id == run_id)
+    ).first()
+    if analysis:
+        patch = synthesize_code_patch(
+            category=analysis.failure_category or "UNKNOWN",
+            root_cause=analysis.root_cause or "",
+            explanation=analysis.explanation,
+            log_content=analysis.explanation
+        )
+        return patch
+
+    raise HTTPException(status_code=404, detail="Run not found for remediation preview.")
+
+@app.post("/api/remediations/{remediation_id}/review")
+def review_remediation(
+    remediation_id: str,
+    req: ReviewRemediationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Human-in-the-Loop Review: Approves or rejects a proposed code remediation patch.
+    Enforces minimum role permissions (Developer, Admin, or Owner).
+    """
+    action = req.action.lower()
+    if action not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="Action must be 'approve' or 'reject'.")
+
+    # Verify user role
+    role_allowed = req.reviewer_role in (Role.DEVELOPER, Role.ADMIN, Role.OWNER)
+    if not role_allowed:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Role '{req.reviewer_role}' does not have permission to review remediations."
+        )
+
+    rem = db.query(CodeRemediation).filter(CodeRemediation.id == remediation_id).first()
+    if not rem:
+        # Check if it is an in-memory run patch
+        for r_id, r_data in runs.items():
+            if r_data.get("report", {}).get("code_patch", {}).get("patch_id") == remediation_id:
+                new_status = "approved" if action == "approve" else "rejected"
+                r_data["report"]["code_patch"]["status"] = new_status
+                record_remediation_metric(action)
+                return {
+                    "status": new_status,
+                    "remediation_id": remediation_id,
+                    "message": f"Remediation patch {action}d successfully."
+                }
+        raise HTTPException(status_code=404, detail="Remediation not found.")
+
+    new_status = "approved" if action == "approve" else "rejected"
+    rem.status = new_status
+    rem.reviewed_by = req.reviewer_username or "admin"
+    rem.review_comments = req.comment
+    db.commit()
+
+    record_remediation_metric(action)
+
+    return {
+        "status": new_status,
+        "remediation_id": rem.id,
+        "reviewed_by": rem.reviewed_by,
+        "message": f"Remediation patch '{rem.title}' has been {action}d."
+    }
+
+@app.post("/api/remediations/{remediation_id}/apply")
+def apply_remediation(
+    remediation_id: str,
+    req: ApplyRemediationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Applies an approved patch to the staging environment and verifies stability.
+    """
+    rem = db.query(CodeRemediation).filter(CodeRemediation.id == remediation_id).first()
+    diff_content = None
+    target_file = None
+    run_ref = None
+
+    if rem:
+        if rem.status != "approved":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Remediation must be 'approved' before applying. Current status: '{rem.status}'."
+            )
+        diff_content = rem.diff_content
+        target_file = rem.target_file
+        run_ref = rem.run_id
+    else:
+        # Check in-memory run
+        for r_id, r_data in runs.items():
+            patch = r_data.get("report", {}).get("code_patch")
+            if patch and patch.get("patch_id") == remediation_id:
+                diff_content = patch["diff_content"]
+                target_file = patch["target_file"]
+                run_ref = r_id
+                break
+
+    if not diff_content:
+        raise HTTPException(status_code=404, detail="Approved remediation not found.")
+
+    # Execute staging application
+    result = apply_simulated_patch(diff_content, target_file, run_ref)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("message"))
+
+    if rem:
+        from datetime import datetime, timezone
+        rem.status = "applied"
+        rem.applied_at = datetime.now(timezone.utc)
+        db.commit()
+
+    record_remediation_metric("applied")
+
+    return {
+        "status": "applied",
+        "remediation_id": remediation_id,
+        "target_file": target_file,
+        "verification": result["verification_result"],
+        "message": result["message"]
+    }
+
+# ==========================================
+# MILESTONE 6: OBSERVABILITY & PROMETHEUS METRICS
+# ==========================================
+
+@app.get("/api/metrics")
+def get_metrics():
+    """
+    Exposes real-time Prometheus metrics for CI pipeline health, failure frequency,
+    recurrence detection, MTTD, analysis latency, and remediation approval actions.
+    """
+    content, content_type = get_prometheus_metrics()
+    return Response(content=content, media_type=content_type)
 
 if __name__ == "__main__":
     import uvicorn

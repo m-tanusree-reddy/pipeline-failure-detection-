@@ -375,3 +375,64 @@ Built the full `backend/tools/` package with 4 tools and an orchestrator:
 - Added `test_production_database_security_validation()` to `backend/tests/test_v4_production_backend.py`.
 - **All 24 tests across Milestones 1-4 pass in 23.26s** (`pytest backend/tests/test_v2_milestones.py backend/tests/test_v3_notifications.py backend/tests/test_v4_production_backend.py -v`).
 - Committed (`553ca12`) and pushed directly to `origin/main`.
+
+## Day 12 Milestone 5 (AI Intelligence) & Milestone 6 (Observability & CI/CD)
+
+### 1. Milestone 5 – Advanced AI Intelligence
+- **Granular Failure Archetype Classification (`backend/services/classification_service.py`):**
+  - Categorizes root causes into 8 distinct archetypes: `DEPENDENCY_INCOMPATIBILITY`, `RESOURCE_EXHAUSTION`, `SECRETS_CREDENTIALS_EXPIRATION`, `BUILD_SYNTAX_ERROR`, `FLAKY_TEST`, `ASSERTION_FAILURE`, `INFRASTRUCTURE_TIMEOUT`, `WORKFLOW_CONFIG_ERROR`.
+  - Maps common patterns (e.g., `ModuleNotFoundError`, `OOMKilled`, expired certificates, assertion mismatches) deterministically with LLM refinement fallback.
+- **Composite Multi-Factor Severity Scoring Engine:**
+  - Computes composite severity score ($0.0 \le S \le 1.0$) based on base archetype severity, branch blast radius (`main`/`prod` = 1.0 vs feature branch = 0.5), and recurrence multiplier ($1.0 + 0.1 \times \text{recurrence}$).
+  - Categorizes into 4 severity tiers: `CRITICAL` ($\ge 0.85$), `HIGH` ($\ge 0.65$), `MEDIUM` ($\ge 0.40$), and `LOW` ($< 0.40$).
+- **AI-Generated Code-Level Patch Synthesis (`backend/services/remediation_service.py`):**
+  - Synthesizes actionable, standard unified Git diff patches (`diff --git a/... b/...`) with file targets, diff hunks (`@@ -... +... @@`), risk level (`LOW`/`MEDIUM`/`HIGH`), explanation rationale, and automated validation test commands.
+  - Generates concrete code replacements for dependency pin updates, missing configuration keys, assertion adjustments, and timeout modifications.
+- **Human-in-the-Loop Remediation Workflow:**
+  - Created `CodeRemediation` SQLAlchemy database model with status states: `pending_review` $\rightarrow$ `approved` / `rejected` $\rightarrow$ `applied`.
+  - Added endpoints:
+    - `GET /api/runs/{run_id}/remediations`: Lists proposed patches and review states.
+    - `POST /api/remediations/preview`: On-the-fly diff synthesis preview.
+    - `POST /api/remediations/{id}/review`: RBAC-protected human review requiring `Developer`, `Admin`, or `Owner` privileges.
+    - `POST /api/remediations/{id}/apply`: Stages approved patches to repository workspace.
+- **Database Migrations:**
+  - Generated and executed Alembic revision `45f5112cb868_add_code_remediations_and_severity.py` creating the `code_remediations` table and adding `failure_category` and `severity_score` to `failure_analyses`.
+- **Frontend Interactive Remediation Card (`frontend/src/App.tsx`):**
+  - Displaying granular failure archetype badge, composite severity score bar, blast radius pill, and recurrence counter in the root-cause report header.
+  - Unified Git diff viewer with syntax color-coding (red deletions, green additions).
+  - 1-click **Approve Patch**, **Reject Patch**, and **Apply Fix to Workspace** action buttons reflecting live state transitions.
+
+### 2. Milestone 6 – Observability, Security & Production CI/CD
+- **Prometheus Metrics Engine (`backend/services/metrics_service.py`):**
+  - Integrated Prometheus client exposing standard OpenMetrics at `GET /api/metrics`.
+  - Telemetry instrumentation:
+    - `pipeline_failures_total`: Counter partitioned by `repo`, `branch`, and `category`.
+    - `pipeline_recurrence_total`: Counter tracking repeat failures.
+    - `pipeline_notifications_sent_total`: Counter partitioned by `channel` and `priority`.
+    - `pipeline_remediations_total`: Counter partitioned by `status` and `risk_level`.
+    - `pipeline_analysis_duration_seconds`: Histogram tracking diagnostic execution time.
+    - `pipeline_mttd_seconds`: Histogram tracking Mean Time to Detect from failure event to notification.
+    - `pipeline_queue_depth`: Gauge tracking pending background tasks.
+- **Grafana Telemetry Dashboard (`monitoring/grafana/dashboards/pipeline_dashboard.json`):**
+  - Pre-built JSON dashboard with visual panels for pipeline throughput, recurrence rates, MTTR/MTTD distributions, and worker queue lag.
+  - Scrape configuration created in `monitoring/prometheus/prometheus.yml`.
+  - Updated `docker-compose.yml` adding `prometheus` (port 9090) and `grafana` (port 3000) services with persistent volumes.
+- **Sentry Error Tracking Integration:**
+  - Initialized Sentry SDK in `backend/server.py` with environment variable `SENTRY_DSN` and tracing sample rates for API routes and Celery background workers.
+- **Automated GitHub Actions CI/CD (`.github/workflows/ci.yml`):**
+  - Automated workflow triggered on pushes to `main` and Pull Requests.
+  - Multi-job pipeline:
+    - `backend-test`: Python 3.11 environment, installs dependencies, verifies Alembic migrations, runs full Pytest suite (30 tests).
+    - `frontend-build`: Node.js 20 environment, verifies TypeScript compiler (`tsc -b`), builds Vite distribution.
+    - `docker-build`: Verifies Docker Compose build integrity for production containers.
+
+### 3. Verification & Validation
+- Added `backend/tests/test_v5_v6_milestones.py` covering:
+  - Granular archetype classification (8 categories).
+  - Composite multi-factor severity scoring engine.
+  - Unified Git diff code patch synthesis.
+  - Simulated staging patch application and syntax validation.
+  - Human-in-the-loop review RBAC authorization.
+  - Prometheus metrics OpenMetrics exposition.
+- **All 30 tests across Milestones 1 through 6 pass with 100% success rate** (`pytest backend/tests/test_v2_milestones.py backend/tests/test_v3_notifications.py backend/tests/test_v4_production_backend.py backend/tests/test_v5_v6_milestones.py -v`).
+- React frontend compiled and built in **247ms with 0 errors** (`tsc -b && vite build`).

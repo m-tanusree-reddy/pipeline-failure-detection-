@@ -42,6 +42,21 @@ interface RunData {
     recurrence_count?: number
     error_signature?: string
     intelligence_note?: string
+    failure_category?: string
+    severity_score?: number
+    severity_tier?: string
+    blast_radius?: string
+    remediation_id?: string
+    code_patch?: {
+      patch_id: string
+      title: string
+      target_file: string
+      diff_content: string
+      rationale: string
+      risk_level: string
+      validation_command: string
+      status: string
+    }
     past_occurrences?: Array<{
       run_id: string
       commit_sha: string
@@ -557,6 +572,71 @@ function App() {
       }
     } catch (err: any) {
       showToast(`Failed to execute fix: ${err.message}`)
+    }
+  }
+
+  const handleReviewPatch = async (action: 'approve' | 'reject') => {
+    const patchId = runData?.report?.code_patch?.patch_id || runData?.report?.remediation_id
+    if (!patchId) return
+    try {
+      const res = await fetch(`${API_BASE}/api/remediations/${patchId}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          reviewer_role: 'Developer',
+          reviewer_username: 'developer-oncall',
+          comment: `Human review: ${action}d from interactive dashboard.`
+        })
+      })
+      if (res.ok) {
+        const data = await res.json()
+        showToast(data.message)
+        if (runData?.report?.code_patch) {
+          setRunData({
+            ...runData,
+            report: {
+              ...runData.report,
+              code_patch: { ...runData.report.code_patch, status: data.status }
+            }
+          })
+        }
+      } else {
+        const err = await res.json()
+        showToast(err.detail || 'Review failed.')
+      }
+    } catch (err: any) {
+      showToast(`Review error: ${err.message}`)
+    }
+  }
+
+  const handleApplyPatch = async () => {
+    const patchId = runData?.report?.code_patch?.patch_id || runData?.report?.remediation_id
+    if (!patchId) return
+    try {
+      const res = await fetch(`${API_BASE}/api/remediations/${patchId}/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'apply' })
+      })
+      if (res.ok) {
+        const data = await res.json()
+        showToast(data.message)
+        if (runData?.report?.code_patch) {
+          setRunData({
+            ...runData,
+            report: {
+              ...runData.report,
+              code_patch: { ...runData.report.code_patch, status: 'applied' }
+            }
+          })
+        }
+      } else {
+        const err = await res.json()
+        showToast(err.detail || 'Failed to apply patch.')
+      }
+    } catch (err: any) {
+      showToast(`Apply error: ${err.message}`)
     }
   }
 
@@ -1606,6 +1686,26 @@ function App() {
                   </div>
                 )}
 
+                {/* Milestone 5: Granular Classification & Composite Severity Card */}
+                {runData.report.failure_category && (
+                  <div className="p-4 rounded-2xl bg-surface-container-high border border-outline-variant flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <span className="material-symbols-outlined text-primary text-xl">category</span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-bold text-primary px-2 py-0.5 rounded bg-primary/10">
+                            {runData.report.failure_category}
+                          </span>
+                          <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded ${runData.report.severity_tier === 'CRITICAL' ? 'bg-error text-white' : runData.report.severity_tier === 'HIGH' ? 'bg-amber-500/20 text-amber-400' : 'bg-primary/20 text-primary'}`}>
+                            {runData.report.severity_tier || 'HIGH'} ({(runData.report.severity_score || 0.70).toFixed(2)})
+                          </span>
+                        </div>
+                        <p className="text-xs text-on-surface-variant mt-1 font-medium">{runData.report.blast_radius}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* AI Root Cause Card */}
                 <div className="glass-panel p-6 rounded-2xl border border-primary/30">
                   <h3 className="text-base font-bold text-primary flex items-center gap-2 mb-2">
@@ -1642,6 +1742,105 @@ function App() {
                     ))}
                   </div>
                 </div>
+
+                {/* Milestone 5: AI-Generated Code-Level Patch & Approval Workflow */}
+                {runData.report.code_patch && (
+                  <div className="glass-panel p-6 rounded-2xl border border-outline-variant flex flex-col gap-4">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-secondary">code_blocks</span>
+                          <h3 className="text-base font-bold text-on-surface">{runData.report.code_patch.title}</h3>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                            runData.report.code_patch.status === 'applied' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                            runData.report.code_patch.status === 'approved' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                            runData.report.code_patch.status === 'rejected' ? 'bg-error/20 text-error border border-error/30' :
+                            'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                          }`}>
+                            {runData.report.code_patch.status.toUpperCase()}
+                          </span>
+                        </div>
+                        <p className="text-xs text-on-surface-variant font-mono mt-1">
+                          Target: <span className="text-primary font-bold">{runData.report.code_patch.target_file}</span> • Risk: <span className="font-bold">{runData.report.code_patch.risk_level}</span>
+                        </p>
+                      </div>
+
+                      {/* Human-in-the-Loop Approval Action Controls */}
+                      <div className="flex items-center gap-2">
+                        {runData.report.code_patch.status === 'pending_review' && (
+                          <>
+                            <button
+                              onClick={() => handleReviewPatch('approve')}
+                              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shadow-sm active:scale-95"
+                            >
+                              <span className="material-symbols-outlined text-sm">thumb_up</span>
+                              Approve Patch
+                            </button>
+                            <button
+                              onClick={() => handleReviewPatch('reject')}
+                              className="px-3.5 py-1.5 bg-surface-container-highest hover:bg-error/20 text-on-surface-variant hover:text-error rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 border border-outline-variant active:scale-95"
+                            >
+                              <span className="material-symbols-outlined text-sm">thumb_down</span>
+                              Reject
+                            </button>
+                          </>
+                        )}
+                        {runData.report.code_patch.status === 'approved' && (
+                          <button
+                            onClick={handleApplyPatch}
+                            className="px-4 py-1.5 bg-primary hover:bg-primary/90 text-on-primary rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shadow-md active:scale-95 animate-pulse"
+                          >
+                            <span className="material-symbols-outlined text-sm">rocket_launch</span>
+                            Apply to Staging
+                          </button>
+                        )}
+                        {runData.report.code_patch.status === 'applied' && (
+                          <span className="text-emerald-400 text-xs font-mono font-bold flex items-center gap-1">
+                            <span className="material-symbols-outlined text-sm">verified</span>
+                            Verified on Staging
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-on-surface-variant leading-relaxed">
+                      {runData.report.code_patch.rationale}
+                    </p>
+
+                    {/* Syntax-Highlighted Unified Diff Viewer */}
+                    <div className="bg-[#12161f] p-4 rounded-xl font-mono text-xs overflow-x-auto border border-outline-variant/60 shadow-inner max-h-64">
+                      {runData.report.code_patch.diff_content.split('\n').map((line, lIdx) => {
+                        const isAdd = line.startsWith('+') && !line.startsWith('+++')
+                        const isDel = line.startsWith('-') && !line.startsWith('---')
+                        const isHunk = line.startsWith('@@')
+                        const isHeader = line.startsWith('diff --git') || line.startsWith('---') || line.startsWith('+++')
+                        return (
+                          <div
+                            key={lIdx}
+                            className={`${
+                              isAdd ? 'text-emerald-400 bg-emerald-950/30' :
+                              isDel ? 'text-rose-400 bg-rose-950/30' :
+                              isHunk ? 'text-cyan-400 bg-cyan-950/20' :
+                              isHeader ? 'text-on-surface-variant font-bold' :
+                              'text-on-surface-variant'
+                            } px-2 py-0.5 rounded leading-relaxed`}
+                          >
+                            {line || ' '}
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {runData.report.code_patch.validation_command && (
+                      <div className="text-[11px] font-mono text-on-surface-variant flex items-center gap-2">
+                        <span className="text-primary font-bold">Verification:</span>
+                        <code className="bg-surface-container-highest px-2 py-0.5 rounded text-secondary">
+                          {runData.report.code_patch.validation_command}
+                        </code>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Past Occurrences Table */}
                 {runData.report.past_occurrences && runData.report.past_occurrences.length > 0 && (

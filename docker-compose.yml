@@ -100,6 +100,38 @@ services:
       redis:
         condition: service_healthy
 
+  # 5. Prometheus Observability Scraper (Milestone 6)
+  prometheus:
+    image: prom/prometheus:v2.50.0
+    container_name: pipeline_prometheus
+    restart: always
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      - api
+
+  # 6. Grafana Telemetry Dashboard (Milestone 6)
+  grafana:
+    image: grafana/grafana:10.3.3
+    container_name: pipeline_grafana
+    restart: always
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin_secure_change_me}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+    depends_on:
+      - prometheus
+
 volumes:
   pg_data:
   redis_data:
+  prometheus_data:
+  grafana_data:

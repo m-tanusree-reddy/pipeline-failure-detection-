@@ -80,6 +80,7 @@ class WorkflowRun(Base):
 
     repository = relationship("Repository", back_populates="workflow_runs")
     analysis = relationship("FailureAnalysis", back_populates="workflow_run", uselist=False, cascade="all, delete-orphan")
+    remediations = relationship("CodeRemediation", back_populates="workflow_run", cascade="all, delete-orphan")
 
 class FailureAnalysis(Base):
     __tablename__ = "failure_analyses"
@@ -88,6 +89,8 @@ class FailureAnalysis(Base):
     run_id = Column(String(36), ForeignKey("workflow_runs.id"), nullable=False, unique=True)
     analysis_run_id = Column(String(64), nullable=True) # links to in-memory run_id for real-time streaming
     failure_type = Column(String(128), nullable=True)
+    failure_category = Column(String(64), nullable=True) # Granular category (Milestone 5)
+    severity_score = Column(Float, default=0.5)           # Composite severity score 0.0 - 1.0 (Milestone 5)
     root_cause = Column(String(256), nullable=True)
     explanation = Column(Text, nullable=True)
     suggested_fixes = Column(JSON, default=list)
@@ -107,6 +110,27 @@ class FailureAnalysis(Base):
     created_at = Column(DateTime, default=utc_now)
 
     workflow_run = relationship("WorkflowRun", back_populates="analysis")
+
+class CodeRemediation(Base):
+    __tablename__ = "code_remediations"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    run_id = Column(String(36), ForeignKey("workflow_runs.id"), nullable=False)
+    title = Column(String(256), nullable=False)
+    target_file = Column(String(256), nullable=False)
+    diff_content = Column(Text, nullable=False)
+    rationale = Column(Text, nullable=True)
+    risk_level = Column(String(16), default="LOW") # LOW, MEDIUM, HIGH
+    validation_command = Column(String(256), nullable=True)
+    status = Column(String(32), default="pending_review") # pending_review, approved, rejected, applied
+    reviewer_role = Column(String(32), default="Developer") # Minimum required role to approve
+    reviewed_by = Column(String(128), nullable=True)
+    review_comments = Column(Text, nullable=True)
+    applied_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+    workflow_run = relationship("WorkflowRun", back_populates="remediations")
 
 class NotificationConfig(Base):
     __tablename__ = "notification_configs"
