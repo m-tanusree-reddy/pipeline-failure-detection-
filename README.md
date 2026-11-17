@@ -142,31 +142,30 @@ flowchart TD
 This repository adheres to a **Trunk-Based / Feature-Branch Workflow**:
 
 ```mermaid
-gitGraph
-    commit id: "Initial Scaffold"
-    branch feature/github-api
-    checkout feature/github-api
-    commit id: "Day 2: GitHub API Client"
-    checkout main
-    merge feature/github-api id: "PR #2"
-    branch feature/log-parser
-    checkout feature/log-parser
-    commit id: "Day 3: Priority Log Parser"
-    checkout main
-    merge feature/log-parser id: "PR #4"
-    branch feature/dashboard-integration
-    checkout feature/dashboard-integration
-    commit id: "React Stitch Dashboard"
-    checkout main
-    merge feature/dashboard-integration id: "PR #8"
-    branch feature/pipeline-failure-detection-3.0
-    checkout feature/pipeline-failure-detection-3.0
-    commit id: "Milestone 1: Two-Tier RBAC"
-    commit id: "Milestone 2: HMAC Webhooks"
-    commit id: "Milestone 3: Notification Engine"
-    commit id: "Milestone 4: Celery + Docker"
-    checkout main
-    merge feature/pipeline-failure-detection-3.0 id: "Pipeline 3.0 Release"
+flowchart LR
+    subgraph Trunk ["Production Trunk (main)"]
+        direction LR
+        M0["Initial Commit"] --> M1["PR #2: GitHub API"]
+        M1 --> M2["PR #4: Log Parser"]
+        M2 --> M3["PR #8: Dashboard"]
+        M3 --> M4["Pipeline 3.0 Release"]
+    end
+
+    subgraph Features ["Feature Branches"]
+        F1["feature/github-api"]
+        F2["feature/log-parser"]
+        F3["feature/dashboard-integration"]
+        F4["feature/pipeline-3.0"]
+    end
+
+    M0 -.->|branch| F1
+    F1 -.->|Merge PR #2| M1
+    M1 -.->|branch| F2
+    F2 -.->|Merge PR #4| M2
+    M2 -.->|branch| F3
+    F3 -.->|Merge PR #8| M3
+    M3 -.->|branch| F4
+    F4 -.->|Merge Release| M4
 ```
 
 ### Branch Taxonomy:
