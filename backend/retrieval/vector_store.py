@@ -4,16 +4,61 @@ from pathlib import Path
 from typing import List, Dict, Optional
 import numpy as np
 
+class _NumpyFlatL2Index:
+    """Numpy-based IndexFlatL2 fallback when faiss-cpu is not installed."""
+    def __init__(self, d: int):
+        self.d = d
+        self.vectors = np.empty((0, d), dtype=np.float32)
+        self.ntotal = 0
+
+    def add(self, x: np.ndarray):
+        if self.vectors.shape[0] == 0:
+            self.vectors = np.array(x, dtype=np.float32)
+        else:
+            self.vectors = np.vstack([self.vectors, np.array(x, dtype=np.float32)])
+        self.ntotal = self.vectors.shape[0]
+
+    def search(self, x: np.ndarray, k: int):
+        if self.ntotal == 0:
+            return np.empty((x.shape[0], 0), dtype=np.float32), np.empty((x.shape[0], 0), dtype=np.int64)
+        k = min(k, self.ntotal)
+        dists = []
+        indices = []
+        for query in x:
+            diff = self.vectors - query
+            sq_dists = np.sum(diff * diff, axis=1)
+            sorted_idx = np.argsort(sq_dists)[:k]
+            dists.append(sq_dists[sorted_idx])
+            indices.append(sorted_idx)
+        return np.array(dists, dtype=np.float32), np.array(indices, dtype=np.int64)
+
+class _FaissFallbackModule:
+    IndexFlatL2 = _NumpyFlatL2Index
+
+    @staticmethod
+    def write_index(index, filepath):
+        import pickle
+        with open(filepath, "wb") as f:
+            pickle.dump(index, f)
+
+    @staticmethod
+    def read_index(filepath):
+        import pickle
+        with open(filepath, "rb") as f:
+            return pickle.load(f)
+
 def _get_faiss():
     """
     Lazy loader helper for faiss.
     Defers loading faiss library until vector store index operations are invoked.
+    Falls back to a pure numpy implementation if faiss is not installed.
     """
     try:
         import faiss
         return faiss
     except ImportError:
-        raise ImportError("faiss package is not installed. Please install faiss-cpu to use VectorStore.")
+        logger.warning("faiss package not installed; using pure-numpy IndexFlatL2 vector fallback.")
+        return _FaissFallbackModule()
 
 # Fallback models in case the previous modules can't be imported during isolation testing
 try:

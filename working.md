@@ -249,3 +249,107 @@ Built the full `backend/tools/` package with 4 tools and an orchestrator:
 - Verified log parser tests and investigator tests run and pass with `OK`.
 - Verified React client compiles and bundles successfully with `npm run build` in **2.24s**.
 - Both servers are running and fully operational locally.
+
+## Day 8 Pipeline Failure Detection 2.0 (Milestones 1 & 2 Implementation)
+
+### 1. Architectural Upgrade & Persistence Layer
+- Initialized SQLAlchemy ORM with SQLite local fallback (`sqlite:///./pipeline_failure_2.db`) and PostgreSQL readiness via `DATABASE_URL`.
+- Created structured schema models in `backend/db/models.py`:
+  - `User`: GitHub ID, login, email, avatar, global roles.
+  - `Repository`: Owner, name, full name, privacy flag, default branch, webhook secret, active status.
+  - `RepositoryMember`: User foreign key, Repo foreign key, verified GitHub permission (`admin`, `maintain`, `write`, `read`), and Application RBAC role (`Owner`, `Admin`, `Developer`, `Viewer`).
+  - `WorkflowRun`: GitHub Actions run ID, workflow name, head branch, commit SHA, message, conclusion, and failure log path.
+  - `FailureAnalysis`: Linked to `WorkflowRun`, storing failure type, root cause, explanation, evidence, confidence, critic status, and suggested fixes.
+  - `NotificationConfig`: Channel routing (Slack, Discord, Email, In-app).
+
+### 2. Milestone 1: GitHub Integration & Two-Tier RBAC
+- **URL & Slug Parsing:** Robust parsing of repository URLs (`https://github.com/owner/repo`, `.git`, or `owner/repo`) in `backend/services/github_service.py`.
+- **GitHub Collaborator Permission Verification:** Interrogates GitHub API (`/repos/{owner}/{repo}/collaborators/{username}/permission` and repository permission payload).
+- **RBAC Governance:** `backend/services/rbac_service.py` enforces permissions (`MANAGE_REPOSITORY`, `MANAGE_SETTINGS`, `MANAGE_MEMBERS`, `TRIGGER_ANALYSIS`, `VIEW_REPORTS`) across `Owner`, `Admin`, `Developer`, and `Viewer`.
+
+### 3. Milestone 2: Automated GitHub Webhook Failure Detection
+- **Webhook Endpoint:** `POST /api/webhooks/github` listening for GitHub `workflow_run` events.
+- **HMAC SHA-256 Signature Verification:** `verify_github_signature()` verifies incoming `X-Hub-Signature-256` headers using repository secrets in constant time (`hmac.compare_digest`).
+- **Event Deduplication:** Ignores repeat webhook deliveries using run ID and attempt caching.
+- **Automated Pipeline Trigger:** On failure (`action == "completed"` and `conclusion == "failure"`), automatically retrieves logs, saves `WorkflowRun`, and spawns `run_analysis_thread` executing the existing `PipelineOrchestrator` (Parser → Classifier → FAISS Vector Store → Gemini LLM → Critic → Report).
+- **Built-in Dev Simulator:** `POST /api/webhooks/github/simulate` allowing 1-click test simulation of build failures directly from the frontend without needing `ngrok` or external proxies.
+
+### 4. Frontend 2.0 Interface
+- Added **Repositories & RBAC** tab for connecting repositories, inspecting verified permissions, and reviewing the Two-Tier RBAC Matrix.
+- Added **Pipeline Monitor (Webhooks)** tab displaying the live webhook listener specification, the interactive failure simulator, and real-time failure events feed with direct links to the AI Root Cause report.
+- Fully preserved manual log upload and existing investigation views.
+
+### 5. Test Suite Verification
+- Added `backend/tests/test_v2_milestones.py` covering URL parsing, RBAC mapping & capability enforcement, HMAC signature validation, repository connection, webhook handshake, simulator execution, and event listing.
+- **11 out of 11 tests pass cleanly in 8.85s**.
+- React frontend builds cleanly via `tsc -b && vite build` in **268ms**.
+
+## Day 9 Pipeline Failure Detection 3.0 (Milestone 3 & Core Intelligence)
+
+### 1. Milestone 3: Intelligent Notification Engine
+- **In-App Notifications:** Added `InAppNotification` table, bell notification dropdown with live unread badge, and endpoints to list and mark notifications as read.
+- **Role-Based Alert Routing Matrix (Improvement B):**
+  - Main branch failures $\rightarrow$ Dispatched to **Owner, Admin, Developer**.
+  - Recurrent failures $\rightarrow$ Escalated directly to **Owner and Admin**.
+  - Feature branch failures $\rightarrow$ Dispatched to **Developer**.
+  - Access/permission changes $\rightarrow$ Dispatched to **Owner**.
+- **Alert Deduplication & Throttling:** 10-minute signature windowing (`is_alert_throttled()`) to prevent spamming developers during iterative retry pushes.
+- **Multi-Channel Integrations:** Built Slack Block Kit webhook payloads and Discord embed dispatches.
+- **Notification Preferences:** User toggles for in-app alerts, Slack, and critical-only filtering (`NotificationPreference`).
+
+### 2. Historical Failure Similarity Intelligence (Improvement C)
+- Implemented `HistoricalFailureService` in `backend/services/historical_failure_service.py`.
+- Generates normalized deterministic error signatures (`generate_error_signature()`) stripping timestamps and volatile memory addresses.
+- Correlates incoming failures against previous occurrences in the repository, calculating recurrence count, past failing branches/commits, and past diagnosis steps.
+- Renders **"RECURRENT FAILURE (Nx)"** banner and past occurrence breakdown directly in the AI Root Cause Report.
+
+### 3. Graceful ML & Vector Store Fallbacks
+- Added pure-Python deterministic vector embeddings (`FallbackTransformer`, dim=384) in `backend/retrieval/embedder.py` when heavy ML dependencies (`torch`, `sentence-transformers`) are absent.
+- Added pure-numpy `_NumpyFlatL2Index` with `write_index` / `read_index` in `backend/retrieval/vector_store.py` when `faiss-cpu` is absent.
+
+### 4. Verification & Testing
+- Added `backend/tests/test_v3_notifications.py` covering trace normalization, role routing matrix, alert deduplication, historical failure correlation, in-app notification flows, preference APIs, and channel management.
+- **18 out of 18 total tests pass cleanly in 15.61s**.
+- React frontend builds cleanly via `tsc -b && vite build` in **458ms**.
+
+
+## Day 10 Pipeline Failure Detection 3.0 (Milestone 4: Production Backend & Infrastructure)
+
+### 1. Milestone 4: Distributed Task Execution & Background Workers (Improvement A)
+- **Celery Application Setup:** Configured `backend/celery_app.py` with late acknowledgements (`task_acks_late=True`), `worker_prefetch_multiplier=1`, and automatic Redis broker availability detection (`is_redis_available()`).
+- **Asynchronous Analysis Task:** Built `backend/tasks/analysis_tasks.py` with `@celery_app.task(bind=True, max_retries=3, default_retry_delay=10)`.
+  - **Idempotency Guarantee:** Checks database state; if a `WorkflowRun` is already `status == "completed"` and has an existing `FailureAnalysis`, it skips reprocessing and returns `{"status": "already_completed"}`.
+  - **Exponential Backoff:** Automatically retries transient failures with 10s, 20s, and 40s delays.
+  - **Integrated Intelligence & Notifications:** Automatically invokes `HistoricalFailureService` and `NotificationService` upon completion.
+- **Smart Task Dispatcher:** Built `backend/services/task_dispatcher.py` to route workload to Celery/Redis when available in production, while maintaining transparent zero-dependency fallback to local asynchronous workers (`FastAPI BackgroundTasks`) during local testing or lightweight deployments.
+- **Wired into API Endpoints:** Integrated `dispatch_analysis()` into `analyze_log()`, `github_webhook_endpoint()`, and `simulate_webhook_failure()` in `backend/server.py`.
+
+### 2. Database Connection Pooling & Migrations
+- **PostgreSQL Connection Pool Tuning:** Configured `backend/db/session.py` with `pool_size=10`, `max_overflow=20`, `pool_pre_ping=True`, and `pool_recycle=3600` for enterprise PostgreSQL instances while preserving SQLite local zero-setup dev operation.
+- **Alembic Database Migrations:**
+  - Initialized Alembic migration environment (`alembic/`).
+  - Configured `alembic/env.py` to import SQLAlchemy models (`backend.db.models.Base`) and dynamically bind to `DATABASE_URL`.
+  - Generated and verified baseline migration `d6ec4146f284_initial_schema_3_0.py` covering all 8 tables.
+  - Verified migration execution with `python -m alembic upgrade head`.
+
+### 3. Containerization & Production Infrastructure
+- **Dockerfile:** Multi-stage production container setup using `python:3.11-slim`, installing dependencies from `requirements.txt`, exposing port 8000, and including container health checks.
+- **Docker Compose Stack (`docker-compose.yml`):**
+  - `postgres`: PostgreSQL 16 Alpine with healthcheck (`pg_isready`) and persistent volume `pg_data`.
+  - `redis`: Redis 7 Alpine with healthcheck (`redis-cli ping`) and persistent volume `redis_data`.
+  - `api`: FastAPI application running Alembic migrations on startup and serving API traffic via Uvicorn.
+  - `worker`: Distributed Celery worker pool executing background analysis tasks with prefetch limits.
+
+### 4. Real-Time System Telemetry & Frontend Health Pill
+- **Telemetry Endpoint:** Added `GET /api/system/status` exposing real-time health for database connection pool (`dialect`, `status`, `pool_size`, `overflow`) and worker queue (`configured_mode`, `active_mode`, `redis_connected`, `task_acks_late`, `prefetch_multiplier`).
+- **Frontend Infrastructure Pill:** Added a live status badge in the React top navigation bar displaying active database dialect (PostgreSQL / SQLite) and background queue engine (Celery Redis / Local Async).
+
+### 5. Verification & Validation
+- Added `backend/tests/test_v4_production_backend.py` covering:
+  - System status API endpoint and database pool telemetry.
+  - Task dispatcher local async fallback path.
+  - Task dispatcher Celery Redis queue routing with mocked worker.
+  - Celery worker task idempotency (skips re-executing completed runs).
+  - Alembic metadata schema registration across all 8 tables.
+- **All 23 tests across Milestones 1, 2, 3, and 4 passed cleanly in 27.33s** (`pytest backend/tests/test_v2_milestones.py backend/tests/test_v3_notifications.py backend/tests/test_v4_production_backend.py -v`).
+- React frontend compiled and built in **429ms with 0 errors** (`tsc -b && vite build`).

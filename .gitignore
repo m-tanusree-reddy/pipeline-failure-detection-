@@ -48,6 +48,9 @@ Desktop.ini
 backend/logs/
 backend/vector_db/
 *.zip
+*.db
+*.sqlite3
 !backend/sample_logs/*.zip
 *.pdf
+.pytest_cache/
 
