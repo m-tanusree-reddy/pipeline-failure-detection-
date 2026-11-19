@@ -159,29 +159,28 @@ This repository adheres to a **Trunk-Based / Feature-Branch Workflow**:
 
 ```mermaid
 flowchart LR
-    subgraph Trunk ["Production Trunk (main)"]
-        direction LR
-        M0["Initial Commit"] --> M1["PR #2: GitHub API"]
-        M1 --> M2["PR #4: Log Parser"]
-        M2 --> M3["PR #8: Dashboard"]
-        M3 --> M4["Pipeline 3.0 Release"]
-    end
+    M0["main (Initial)"] -->|"checkout -b"| F1["feature/github-api"]
+    F1 -->|"Pull Request #2"| M1["main (API Integration)"]
+    
+    M1 -->|"checkout -b"| F2["feature/log-parser"]
+    F2 -->|"Pull Request #4"| M2["main (Log Parser Engine)"]
+    
+    M2 -->|"checkout -b"| F3["feature/dashboard-integration"]
+    F3 -->|"Pull Request #8"| M3["main (Dashboard UI)"]
+    
+    M3 -->|"checkout -b"| F4["feature/ai-intelligence-remediation"]
+    F4 -->|"Pull Request"| M4["main (Milestone 5 & 6)"]
+    
+    M4 -->|"release cut"| R1["release/v3.0.0"]
+    R1 -->|"production deploy"| PROD["Production (v3.0.0 GA)"]
 
-    subgraph Features ["Feature Branches"]
-        F1["feature/github-api"]
-        F2["feature/log-parser"]
-        F3["feature/dashboard-integration"]
-        F4["feature/pipeline-3.0"]
-    end
+    classDef mainTrack fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#f8fafc;
+    classDef featTrack fill:#0f172a,stroke:#10b981,stroke-width:1.5px,stroke-dasharray: 4 4,color:#e2e8f0;
+    classDef prodTrack fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ecfdf5;
 
-    M0 -.->|branch| F1
-    F1 -.->|Merge PR #2| M1
-    M1 -.->|branch| F2
-    F2 -.->|Merge PR #4| M2
-    M2 -.->|branch| F3
-    F3 -.->|Merge PR #8| M3
-    M3 -.->|branch| F4
-    F4 -.->|Merge Release| M4
+    class M0,M1,M2,M3,M4 mainTrack;
+    class F1,F2,F3,F4 featTrack;
+    class R1,PROD prodTrack;
 ```
 
 ### Branch Taxonomy & Active Milestone Branches:
