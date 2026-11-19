@@ -452,3 +452,19 @@ To follow enterprise Trunk-Based & Feature Branch workflows rather than pushing 
 - All branches pushed directly to `origin` on GitHub repository `https://github.com/m-tanusree-reddy/pipeline-failure-detection-.git`.
 - Documented the branch taxonomy and PR workflow in `README.md`.
 - Active working branch switched to feature branch workflow.
+
+## Day 14 CI Runner Migration Hardening & Repository Documentation Polish
+
+### 1. GitHub Actions CI Migration Fix
+- **Problem**: GitHub Actions runs on clean runners failed at step 5 (`Run Database Migrations (SQLite)`) with `sqlite3.OperationalError: no such table: failure_analyses`.
+- **Root Cause**: Baseline migration `d6ec4146f284_initial_schema_3_0.py` had an empty `upgrade()` with `pass`. Migration 2 (`45f5112cb868_add_code_remediations_and_severity.py`) then failed when trying to `ALTER TABLE failure_analyses`.
+- **Fix**:
+  - Updated `d6ec4146f284_initial_schema_3_0.py` to invoke `Base.metadata.create_all(bind=bind)` ensuring all base relational tables are created on fresh databases.
+  - Added defensive `sa.inspect(bind)` checks in `45f5112cb868_add_code_remediations_and_severity.py` to guarantee schema idempotency across both SQLite and PostgreSQL.
+- **Verification**: Verified migration locally on fresh SQLite test database, ran full 30-test Pytest suite (100% pass), and pushed to `main` and `release/v3.0.0`. GitHub Actions CI run `#44542715000` completed with **100% Green (Success ✓)** across Backend tests, Frontend Vite build, and Docker container build.
+
+### 2. Mermaid Branching Diagram Repair
+- **Problem**: Section 4 in `README.md` failed to render on GitHub with `"Unable to render rich display"`.
+- **Root Cause**: Cross-subgraph circular dependencies between `Trunk` and `Features` subgraphs caused Dagre layout cycle errors in GitHub's Mermaid parser.
+- **Fix**: Redesigned the diagram in `README.md` as a linear track (`flowchart LR`) with distinct styling classes (`mainTrack`, `featTrack`, `prodTrack`) and clear edge annotations (`checkout -b`, `Pull Request`, `release cut`), completely eliminating subgraph cycles.
+
