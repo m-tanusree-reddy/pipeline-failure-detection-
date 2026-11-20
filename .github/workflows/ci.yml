@@ -36,7 +36,7 @@ jobs:
           ENVIRONMENT: development
           TASK_QUEUE_MODE: direct
         run: |
-          python -m pytest backend/tests/test_v2_milestones.py backend/tests/test_v3_notifications.py backend/tests/test_v4_production_backend.py backend/tests/test_v5_v6_milestones.py -v
+          python -m pytest backend/tests/test_v2_milestones.py backend/tests/test_v3_notifications.py backend/tests/test_v4_production_backend.py backend/tests/test_v5_v6_milestones.py backend/tests/test_v7_gitops.py -v
 
   test-frontend:
     name: Frontend TypeScript & Vite Build

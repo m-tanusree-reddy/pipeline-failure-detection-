@@ -30,6 +30,8 @@ interface CodePatch {
   risk_level: string
   validation_command: string
   status: string
+  pr_url?: string
+  pr_number?: number
 }
 
 interface PastOccurrence {
@@ -832,7 +834,7 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          applied_by: 'developer-oncall',
+          applied_by: currentUser?.username || 'developer-oncall',
           target_workspace: './staging'
         })
       })
@@ -854,6 +856,78 @@ function App() {
       }
     } catch (err: any) {
       showToast(`Apply error: ${err.message}`)
+    }
+  }
+
+  const [isCreatingPr, setIsCreatingPr] = useState(false)
+  const [prResult, setPrResult] = useState<{ pr_url: string; pr_number: number } | null>(null)
+  const [isPostingComment, setIsPostingComment] = useState(false)
+
+  const handleCreatePullRequest = async () => {
+    const patchId = runData?.report?.code_patch?.patch_id || runData?.report?.remediation_id
+    if (!patchId) return
+    setIsCreatingPr(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/remediations/${patchId}/create-pr`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reviewer_role: 'Developer',
+          reviewer_username: currentUser?.username || 'developer'
+        })
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setPrResult({ pr_url: data.pr_url, pr_number: data.pr_number })
+        showToast(`🎉 GitHub Pull Request #${data.pr_number} created successfully!`)
+        if (runData?.report?.code_patch) {
+          setRunData({
+            ...runData,
+            report: {
+              ...runData.report,
+              code_patch: {
+                ...runData.report.code_patch,
+                status: 'pr_created',
+                pr_url: data.pr_url,
+                pr_number: data.pr_number
+              }
+            }
+          })
+        }
+      } else {
+        const err = await res.json()
+        showToast(err.detail || 'Failed to create Pull Request.')
+      }
+    } catch (err: any) {
+      showToast(`PR creation error: ${err.message}`)
+    } finally {
+      setIsCreatingPr(false)
+    }
+  }
+
+  const handlePostDiagnosticComment = async () => {
+    const targetRunId = activeRunId || (runData as any)?.id || (runData?.report as any)?.run_id
+    if (!targetRunId) {
+      showToast('No active run selected to post comment.')
+      return
+    }
+    setIsPostingComment(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/runs/${targetRunId}/post-github-comment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target: 'commit' })
+      })
+      if (res.ok) {
+        showToast(`✅ Diagnostic comment posted to GitHub commit!`)
+      } else {
+        const err = await res.json()
+        showToast(err.detail || 'Failed to post comment.')
+      }
+    } catch (err: any) {
+      showToast(`Comment error: ${err.message}`)
+    } finally {
+      setIsPostingComment(false)
     }
   }
 
@@ -2416,20 +2490,60 @@ function App() {
                           </>
                         )}
                         {runData.report.code_patch.status === 'approved' && (
-                          <button
-                            onClick={handleApplyPatch}
-                            className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/30 active:scale-95 cursor-pointer flex items-center gap-1.5 animate-pulse"
-                          >
-                            <span className="material-symbols-outlined text-sm">rocket_launch</span>
-                            Apply Fix to Staging Workspace
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={handleCreatePullRequest}
+                              disabled={isCreatingPr}
+                              className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-emerald-600/30 active:scale-95 cursor-pointer flex items-center gap-1.5"
+                            >
+                              <span className="material-symbols-outlined text-sm">merge</span>
+                              {isCreatingPr ? 'Opening PR...' : 'Open GitHub Pull Request'}
+                            </button>
+                            <button
+                              onClick={handleApplyPatch}
+                              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer flex items-center gap-1.5"
+                            >
+                              <span className="material-symbols-outlined text-sm">rocket_launch</span>
+                              Apply to Staging
+                            </button>
+                          </div>
                         )}
                         {runData.report.code_patch.status === 'applied' && (
-                          <span className="text-emerald-400 text-xs font-mono font-bold flex items-center gap-1.5 bg-emerald-500/15 px-3 py-1.5 rounded-lg border border-emerald-500/30">
-                            <span className="material-symbols-outlined text-sm">verified</span>
-                            Applied & Staged Successfully
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-emerald-400 text-xs font-mono font-bold flex items-center gap-1.5 bg-emerald-500/15 px-3 py-1.5 rounded-lg border border-emerald-500/30">
+                              <span className="material-symbols-outlined text-sm">verified</span>
+                              Applied to Staging
+                            </span>
+                            <button
+                              onClick={handleCreatePullRequest}
+                              disabled={isCreatingPr}
+                              className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-emerald-600/30 active:scale-95 cursor-pointer flex items-center gap-1.5"
+                            >
+                              <span className="material-symbols-outlined text-sm">merge</span>
+                              {isCreatingPr ? 'Opening PR...' : 'Open GitHub Pull Request'}
+                            </button>
+                          </div>
                         )}
+                        {runData.report.code_patch.status === 'pr_created' && (
+                          <a
+                            href={runData.report.code_patch.pr_url || prResult?.pr_url || '#'}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 rounded-xl text-xs font-mono font-bold transition-all border border-purple-500/40 flex items-center gap-2 group cursor-pointer"
+                          >
+                            <span className="material-symbols-outlined text-sm text-purple-400 group-hover:translate-x-0.5 transition-transform">open_in_new</span>
+                            Pull Request #{runData.report.code_patch.pr_number || prResult?.pr_number || 'Live'} on GitHub
+                          </a>
+                        )}
+                        <button
+                          onClick={handlePostDiagnosticComment}
+                          disabled={isPostingComment}
+                          title="Post diagnostic summary directly to GitHub commit"
+                          className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-semibold transition-all border border-slate-700/80 flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-sm text-slate-400">comment</span>
+                          {isPostingComment ? 'Posting...' : 'Post GitHub Comment'}
+                        </button>
                       </div>
                     </div>
 

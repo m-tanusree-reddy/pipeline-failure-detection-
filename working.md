@@ -468,3 +468,31 @@ To follow enterprise Trunk-Based & Feature Branch workflows rather than pushing 
 - **Root Cause**: Cross-subgraph circular dependencies between `Trunk` and `Features` subgraphs caused Dagre layout cycle errors in GitHub's Mermaid parser.
 - **Fix**: Redesigned the diagram in `README.md` as a linear track (`flowchart LR`) with distinct styling classes (`mainTrack`, `featTrack`, `prodTrack`) and clear edge annotations (`checkout -b`, `Pull Request`, `release cut`), completely eliminating subgraph cycles.
 
+## Day 15 Milestone 7 (Autonomous GitOps & GitHub PR Remediation Engine)
+
+### 1. Milestone 7 – Autonomous GitOps & GitHub PR Remediation Engine
+- **GitOps Service Architecture (`backend/services/gitops_service.py`):**
+  - Automated PR title generator adhering to Conventional Commits (`fix(ci): ...`).
+  - Automated PR body generator synthesizing structured Markdown with failure metadata table, root cause rationale, unified diff preview, and local validation test commands.
+  - Automated commit/PR diagnostic comment generator posting real-time alerts directly to failing GitHub commits.
+  - End-to-end Pull Request creation workflow (`create_remediation_pull_request`):
+    - Generates dedicated fix branch (`fix/ci-<run_id>-<patch_title>`).
+    - Staged file commit via GitHub Contents API (with offline deterministic simulation fallback for local dev).
+    - Opens formal GitHub Pull Request via GitHub Pulls API.
+    - Updates `CodeRemediation` with `pr_url` and `pr_number`.
+- **Database Schema & Alembic Migration:**
+  - Added `pr_url` (String 512) and `pr_number` (Integer) to `CodeRemediation` model.
+  - Generated and executed Alembic migration `7a8e9b1c2d3e_add_gitops_pr_fields.py` with defensive `sa.inspect(bind)` column checks.
+- **API Endpoints (`backend/server.py`):**
+  - `POST /api/remediations/{remediation_id}/create-pr`: RBAC-protected endpoint requiring `Developer`, `Admin`, or `Owner` privileges.
+  - `POST /api/runs/{run_id}/post-github-comment`: Posts diagnostic summary and patch to GitHub commits.
+- **Frontend UI Integration (`frontend/src/App.tsx`):**
+  - Added **"Open GitHub Pull Request"** action button to approved code remediation cards.
+  - Added **"Post GitHub Comment"** button for 1-click developer commit feedback.
+  - Displaying live **"Pull Request #{pr_number} on GitHub"** badge with direct external link when PR is opened.
+- **Automated Test Suite (`backend/tests/test_v7_gitops.py`):**
+  - 8 new unit/integration tests covering PR title/body formatting, diagnostic comments, offline simulation, mocked live GitHub API, RBAC permission enforcement, and comment posting.
+  - **All 38 tests across Milestones 1 to 7 pass with 100% success rate**.
+  - Frontend compiled and bundled cleanly with `tsc -b && vite build` in **298ms**.
+
+

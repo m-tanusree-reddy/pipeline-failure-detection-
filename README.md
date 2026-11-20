@@ -188,6 +188,7 @@ flowchart LR
 | :--- | :--- | :--- |
 | **`main`** | Production Trunk | Protected, Verified & Active |
 | **`release/v3.0.0`** | Version 3.0.0 Final Release Candidate | Up to date with `main` |
+| **`feature/gitops-autonomous-remediation`** | Milestone 7 (Autonomous GitOps, Auto-PR creation & GitHub PR comment bot) | Active Feature Branch |
 | **`feature/ui-ux-oauth-system`** | UI/UX redesign, GitHub OAuth Login, and User Session Management | Live on GitHub |
 | **`feature/observability-sentry-metrics`** | Milestone 6 (Prometheus metrics, Grafana dashboards, Sentry SDK, CI/CD) | Live on GitHub |
 | **`feature/ai-intelligence-remediation`** | Milestone 5 (Granular archetypes, severity scoring, Git diff patches, human review) | Live on GitHub |
@@ -199,7 +200,7 @@ flowchart LR
 1. Developers branch off `main` (or a release branch) using `feature/<milestone-or-capability>`.
 2. Commit feature code with descriptive conventional commit messages.
 3. Push to `origin feature/<branch-name>` on GitHub.
-4. Open a Pull Request targeting `main`. GitHub Actions CI (`.github/workflows/ci.yml`) executes the automated test suite (30 Pytest tests), Alembic migration verifications, and frontend TypeScript build before merge approval.
+4. Open a Pull Request targeting `main`. GitHub Actions CI (`.github/workflows/ci.yml`) executes the automated test suite (38 Pytest tests), Alembic migration verifications, and frontend TypeScript build before merge approval.
 
 ---
 

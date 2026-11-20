@@ -37,10 +37,13 @@ from backend.services.notification_service import NotificationService, Severity,
 from backend.services.task_dispatcher import dispatch_analysis, get_queue_telemetry
 from backend.services.classification_service import classify_granular_failure, compute_composite_severity
 from backend.services.remediation_service import synthesize_code_patch, apply_simulated_patch
+from backend.services.gitops_service import GitOpsService, GitOpsServiceError
 from backend.services.metrics_service import (
     get_prometheus_metrics, record_failure_metric, record_recurrence_metric,
     record_notification_metric, record_remediation_metric, record_analysis_duration
 )
+
+logger = logging.getLogger("backend")
 
 # Milestone 6: Sentry Error Tracking Initialization
 SENTRY_DSN = os.getenv("SENTRY_DSN", "")
@@ -132,6 +135,15 @@ class ApplyRemediationRequest(BaseModel):
 
 class PreviewRemediationRequest(BaseModel):
     run_id: str
+
+class CreatePullRequestRequest(BaseModel):
+    reviewer_role: Optional[str] = "Developer"
+    reviewer_username: Optional[str] = "developer"
+    token: Optional[str] = None
+
+class PostDiagnosticCommentRequest(BaseModel):
+    token: Optional[str] = None
+    target: Optional[str] = "commit"
 
 # Custom orchestrator subclass to capture stage updates and logs
 class ApiPipelineOrchestrator(PipelineOrchestrator):
@@ -1481,6 +1493,69 @@ def apply_remediation(
         "verification": result["verification_result"],
         "message": result["message"]
     }
+
+# ==========================================
+# MILESTONE 7: AUTONOMOUS GITOPS & PR ENGINE
+# ==========================================
+
+@app.post("/api/remediations/{remediation_id}/create-pr")
+def create_remediation_pull_request_endpoint(
+    remediation_id: str,
+    req: CreatePullRequestRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Autonomous GitOps: Creates a dedicated Git branch, commits the approved
+    unified diff patch, and opens an automated Pull Request on GitHub.
+    Enforces minimum role permissions (Developer, Admin, or Owner).
+    """
+    role_allowed = req.reviewer_role in (Role.DEVELOPER, Role.ADMIN, Role.OWNER)
+    if not role_allowed:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Role '{req.reviewer_role}' does not have permission to create Pull Requests."
+        )
+
+    gitops = GitOpsService(token=req.token)
+    try:
+        result = gitops.create_remediation_pull_request(
+            db_session=db,
+            remediation_id=remediation_id,
+            reviewer_username=req.reviewer_username or "developer",
+            reviewer_role=req.reviewer_role or "Developer",
+            token=req.token
+        )
+        record_remediation_metric("pr_created")
+        return result
+    except GitOpsServiceError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error creating GitHub Pull Request: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"GitOps PR creation failed: {str(e)}")
+
+@app.post("/api/runs/{run_id}/post-github-comment")
+def post_github_diagnostic_comment_endpoint(
+    run_id: str,
+    req: PostDiagnosticCommentRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Posts AI root cause analysis and code remediation patch directly as a diagnostic
+    comment on the target GitHub commit or Pull Request.
+    """
+    gitops = GitOpsService(token=req.token)
+    try:
+        result = gitops.post_commit_diagnostic_comment(
+            db_session=db,
+            run_id=run_id,
+            token=req.token
+        )
+        return result
+    except GitOpsServiceError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error posting GitHub diagnostic comment: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to post GitHub comment: {str(e)}")
 
 # ==========================================
 # MILESTONE 6: OBSERVABILITY & PROMETHEUS METRICS

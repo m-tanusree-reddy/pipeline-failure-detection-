@@ -122,11 +122,13 @@ class CodeRemediation(Base):
     rationale = Column(Text, nullable=True)
     risk_level = Column(String(16), default="LOW") # LOW, MEDIUM, HIGH
     validation_command = Column(String(256), nullable=True)
-    status = Column(String(32), default="pending_review") # pending_review, approved, rejected, applied
+    status = Column(String(32), default="pending_review") # pending_review, approved, rejected, applied, pr_created
     reviewer_role = Column(String(32), default="Developer") # Minimum required role to approve
     reviewed_by = Column(String(128), nullable=True)
     review_comments = Column(Text, nullable=True)
     applied_at = Column(DateTime, nullable=True)
+    pr_url = Column(String(512), nullable=True)
+    pr_number = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
